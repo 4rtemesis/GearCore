@@ -13,14 +13,7 @@ local lastDeleteButtonCenterX
 local lastDeleteButtonCenterY
 local lastConfirmButtonCenterX
 local lastConfirmButtonCenterY
-local DEBUG = true
 local GetDeletePopupFrame
-
-local function DebugPrint(msg)
-    if DEBUG then
-        print("|cff66ccffGearCore debug:|r " .. msg)
-    end
-end
 
 -- On the modern WoW engine (post-Shadowlands, used by all Anniversary clients),
 -- SetBackdrop is only available on frames that inherit BackdropTemplate.
@@ -189,7 +182,6 @@ local function RestoreFrameVisualState()
     f:Show()
     f:Raise()
     AlignFrameButtonToConfirmTarget(f)
-    DebugPrint("RestoreFrameVisualState immediate: shown=" .. tostring(f:IsShown()) .. " alpha=" .. tostring(f:GetAlpha()))
 
     C_Timer.After(0, function()
         if deleteFrame then
@@ -200,7 +192,6 @@ local function RestoreFrameVisualState()
             deleteFrame:Show()
             deleteFrame:Raise()
             AlignFrameButtonToConfirmTarget(deleteFrame)
-            DebugPrint("RestoreFrameVisualState next-frame: shown=" .. tostring(deleteFrame:IsShown()) .. " alpha=" .. tostring(deleteFrame:GetAlpha()))
         end
     end)
 
@@ -280,12 +271,10 @@ local function ResolveProcessingState()
     ShowActiveFrame()
 
     local equippedLink, bag = GetTrackedItemState(item)
-    DebugPrint("ResolveProcessingState: equipped=" .. tostring(equippedLink) .. " bag=" .. tostring(bag))
 
     if not equippedLink and not bag then
         cursorArmed = false
         awaitingConfirmation = false
-        DebugPrint("ResolveProcessingState: item gone, advancing queue")
         RemoveFirstPendingItem()
         FinishQueue()
         return
@@ -297,12 +286,10 @@ local function ResolveProcessingState()
         end
 
         local equippedRetry, bagRetry = GetTrackedItemState(item)
-        DebugPrint("ResolveProcessingState retry: equipped=" .. tostring(equippedRetry) .. " bag=" .. tostring(bagRetry))
 
         if not equippedRetry and not bagRetry then
             cursorArmed = false
             awaitingConfirmation = false
-            DebugPrint("ResolveProcessingState retry: item gone, advancing queue")
             RemoveFirstPendingItem()
             FinishQueue()
             return
@@ -311,7 +298,6 @@ local function ResolveProcessingState()
         cursorArmed = false
         awaitingConfirmation = false
         RefreshButtonState()
-        DebugPrint("ResolveProcessingState retry: item still present, restoring queue")
         print("|cffff4444GearCore:|r Item was not deleted. Click again to retry.")
     end)
 end
@@ -327,7 +313,6 @@ local function PositionDeletePopup()
         popup.__gearcoreHooked = true
         popup:HookScript("OnHide", function()
             C_Timer.After(0, function()
-                DebugPrint("Delete popup OnHide")
                 ResolveProcessingState()
             end)
         end)
@@ -516,7 +501,6 @@ local function HideProcessingFrame()
         deleteFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", -2000, -2000)
         deleteFrame:SetAlpha(1)
         deleteFrame:Show()
-        DebugPrint("HideProcessingFrame parked off-screen")
     end
 end
 
@@ -529,23 +513,19 @@ local function BeginProcessingMonitor()
 
     StopProcessingTicker()
     HideProcessingFrame()
-    DebugPrint("BeginProcessingMonitor for " .. tostring(item.link or item.name))
 
     processingTicker = C_Timer.NewTicker(0.1, function()
         local popup = GetDeletePopupFrame()
         if popup then
             awaitingConfirmation = true
             PositionDeletePopup()
-            DebugPrint("Ticker: popup active")
             return
         end
 
         if CursorHasItem() then
-            DebugPrint("Ticker: cursor still has item")
             return
         end
 
-        DebugPrint("Ticker: resolving processing state")
         ResolveProcessingState()
     end)
 end
@@ -558,7 +538,6 @@ local function BeginCursorMonitor()
     end
 
     StopProcessingTicker()
-    DebugPrint("BeginCursorMonitor for " .. tostring(item.link or item.name))
 
     processingTicker = C_Timer.NewTicker(0.1, function()
         if CursorHasItem() then
@@ -569,12 +548,10 @@ local function BeginCursorMonitor()
         ShowActiveFrame()
 
         local equippedLink, bag = GetTrackedItemState(item)
-        DebugPrint("Cursor monitor clear: equipped=" .. tostring(equippedLink) .. " bag=" .. tostring(bag))
 
         if not equippedLink and not bag then
             cursorArmed = false
             awaitingConfirmation = false
-            DebugPrint("Cursor monitor: item disappeared unexpectedly, advancing queue")
             RemoveFirstPendingItem()
             FinishQueue()
             return
@@ -595,7 +572,6 @@ local function BeginArmMonitor()
     end
 
     StopProcessingTicker()
-    DebugPrint("BeginArmMonitor for " .. tostring(item.link or item.name))
 
     processingTicker = C_Timer.NewTicker(0.1, function()
         local equippedLink, bag = GetTrackedItemState(item)
@@ -606,7 +582,6 @@ local function BeginArmMonitor()
             awaitingConfirmation = false
             ShowActiveFrame()
             RefreshButtonState()
-            DebugPrint("Arm monitor: cursor now holds item")
             BeginCursorMonitor()
             return
         end
@@ -616,7 +591,6 @@ local function BeginArmMonitor()
             cursorArmed = false
             awaitingConfirmation = false
             ShowActiveFrame()
-            DebugPrint("Arm monitor: item disappeared before arm finished")
             RemoveFirstPendingItem()
             FinishQueue()
             return
@@ -627,7 +601,6 @@ local function BeginArmMonitor()
         awaitingConfirmation = false
         ShowActiveFrame()
         RefreshButtonState()
-        DebugPrint("Arm monitor: cursor did not retain item")
         print("|cffff4444GearCore:|r Item was not held on the cursor. Click again to retry.")
     end)
 end
@@ -640,18 +613,15 @@ local function BeginMoveMonitor()
     end
 
     StopProcessingTicker()
-    DebugPrint("BeginMoveMonitor for " .. tostring(item.link or item.name))
 
     processingTicker = C_Timer.NewTicker(0.1, function()
         if CursorHasItem() then
-            DebugPrint("Move monitor: cursor still has item")
             return
         end
 
         local equippedLink, bag = GetTrackedItemState(item)
         StopProcessingTicker()
         ShowActiveFrame()
-        DebugPrint("Move monitor clear: equipped=" .. tostring(equippedLink) .. " bag=" .. tostring(bag))
 
         if bag then
             awaitingConfirmation = false
@@ -667,7 +637,6 @@ local function BeginMoveMonitor()
             end
 
             local equippedRetry, bagRetry = GetTrackedItemState(item)
-            DebugPrint("Move monitor retry: equipped=" .. tostring(equippedRetry) .. " bag=" .. tostring(bagRetry))
 
             if bagRetry then
                 awaitingConfirmation = false
@@ -757,7 +726,6 @@ function GearCoreUI.ExecuteDeletion()
         if awaitingConfirmation then
             PositionDeletePopup()
         end
-        DebugPrint("ExecuteDeletion second click: DeleteCursorItem called, awaitingConfirmation=" .. tostring(awaitingConfirmation) .. " cursorHasItem=" .. tostring(CursorHasItem()))
         BeginProcessingMonitor()
         return
     end
@@ -795,14 +763,12 @@ function GearCoreUI.ExecuteDeletion()
         awaitingConfirmation = false
         BeginMoveMonitor()
         PickupContainerItem(bag, bagSlot)
-        DebugPrint("ExecuteDeletion first phase: attempted move from equipment to bag")
         return
     end
 
     ClearCursor()
     BeginArmMonitor()
     PickupContainerItem(bag, bagSlot)
-    DebugPrint("ExecuteDeletion first click: attempted bag pickup for arming")
 end
 
 -- Returns how many items are currently queued (DB + in-memory).

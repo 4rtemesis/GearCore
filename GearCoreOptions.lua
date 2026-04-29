@@ -116,7 +116,7 @@ local function BuildOptionsFrame()
     slider:SetValueStep(1)
 
     local sliderTrack = CreateFrame("Frame", nil, f, backdropTemplate)
-    sliderTrack:SetSize(300, 8)
+    sliderTrack:SetSize(284, 8)
     sliderTrack:SetPoint("CENTER", slider, "CENTER", 0, -1)
     sliderTrack:SetFrameLevel(slider:GetFrameLevel() - 1)
     sliderTrack:SetBackdrop({
@@ -143,12 +143,16 @@ local function BuildOptionsFrame()
         sliderHigh:ClearAllPoints()
         sliderHigh:SetPoint("TOPRIGHT", sliderTrack, "BOTTOMRIGHT", 2, -6)
     end
+    local sliderMid = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sliderMid:SetPoint("TOP", sliderTrack, "BOTTOM", 0, -6)
+    sliderMid:SetTextColor(0.82, 0.82, 0.82)
+    sliderMid:SetText("Difficult")
     if sliderText then
         sliderText:SetText(DIFF_LABELS[GearCore.GetSetting("difficulty")])
         sliderText:ClearAllPoints()
         sliderText:SetPoint("BOTTOMLEFT", sliderTrack, "TOPLEFT", 0, 12)
         sliderText:SetJustifyH("LEFT")
-        sliderText:SetWidth(300)
+        sliderText:SetWidth(284)
     end
     f.sliderText = sliderText  -- save ref for OnShow refresh
 
@@ -211,7 +215,7 @@ local function BuildOptionsFrame()
 
     local queueBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     queueBtn:SetSize(300, 28)
-    queueBtn:SetPoint("TOP", queueHeader, "BOTTOM", 0, -8)
+    queueBtn:SetPoint("TOP", f, "TOP", 0, -382)
     queueBtn:SetScript("OnClick", function()
         f:Hide()
         GearCoreUI.ReopenDeletionFrame()
