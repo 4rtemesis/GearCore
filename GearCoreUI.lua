@@ -6,8 +6,7 @@ GearCoreUI = {}
 
 local deleteFrame
 local pendingItems = {}
-local deleteQueue  = {}
-local deleteIndex  = 0
+local awaitingConfirmation = false
 
 -- On the modern WoW engine (post-Shadowlands, used by all Anniversary clients),
 -- SetBackdrop is only available on frames that inherit BackdropTemplate.
@@ -87,6 +86,44 @@ local function EnsureFrame()
     return deleteFrame
 end
 
+local function SyncPendingDeletionDB()
+    if #pendingItems > 0 then
+        GearCoreDB.pendingDeletion = {}
+        for i, item in ipairs(pendingItems) do
+            GearCoreDB.pendingDeletion[i] = {
+                slot = item.slot,
+                link = item.link,
+                name = item.name,
+            }
+        end
+    else
+        GearCoreDB.pendingDeletion = nil
+    end
+end
+
+local function RefreshButtonState()
+    local f = EnsureFrame()
+
+    if UnitIsDeadOrGhost("player") then
+        f.deleteBtn:SetText("Will unlock after resurrection")
+        f.deleteBtn:Disable()
+        return
+    end
+
+    if #pendingItems == 0 then
+        f.deleteBtn:SetText("No pending items")
+        f.deleteBtn:Disable()
+        return
+    end
+
+    if awaitingConfirmation then
+        f.deleteBtn:SetText("Continue After DELETE Prompt")
+    else
+        f.deleteBtn:SetText("DELETE NEXT ITEM (" .. #pendingItems .. " LEFT)")
+    end
+    f.deleteBtn:Enable()
+end
+
 -- ── Item list population ──────────────────────────────────────────────────────
 
 local function PopulateList(items)
@@ -159,109 +196,161 @@ end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
--- Shows the doom window. While dead the button is locked — deletion fires
--- automatically on resurrection via GearCore's PLAYER_ALIVE handler.
+-- Shows the doom window. While dead the button stays locked until resurrection.
 function GearCoreUI.ShowDeletionFrame(items)
     wipe(pendingItems)
     for _, item in ipairs(items) do pendingItems[#pendingItems+1] = item end
+    awaitingConfirmation = false
+    SyncPendingDeletionDB()
     PopulateList(pendingItems)
     local f = EnsureFrame()
-
-    if UnitIsDeadOrGhost("player") then
-        f.deleteBtn:SetText("Will be deleted on resurrection")
-        f.deleteBtn:Disable()
-    else
-        f.deleteBtn:SetText("DELETE MARKED ITEMS")
-        f.deleteBtn:Enable()
-    end
-
+    RefreshButtonState()
     f:Show()
     f:Raise()
 end
 
--- Called by the button (alive path) or by TriggerDeletion (auto-resurrection path).
+local function FindItemInBagsByLink(link)
+    if not link then
+        return nil, nil
+    end
+
+    for bag = 0, 4 do
+        for slot = 1, BagGetNumSlots(bag) do
+            if BagGetItemLink(bag, slot) == link then
+                return bag, slot
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+local function RemoveFirstPendingItem()
+    table.remove(pendingItems, 1)
+    SyncPendingDeletionDB()
+    PopulateList(pendingItems)
+    RefreshButtonState()
+end
+
+local function FinishQueue()
+    awaitingConfirmation = false
+    SyncPendingDeletionDB()
+    PopulateList(pendingItems)
+
+    if #pendingItems == 0 then
+        print("|cffff4444GearCore:|r Deletion complete — all marked items processed.")
+        if deleteFrame then
+            deleteFrame:Hide()
+        end
+        return
+    end
+
+    RefreshButtonState()
+end
+
 function GearCoreUI.ExecuteDeletion()
     if UnitIsDeadOrGhost("player") then
-        print("|cffff4444GearCore:|r You are dead. Items will be deleted automatically when you resurrect.")
+        print("|cffff4444GearCore:|r You must resurrect before deleting queued items.")
         return
     end
 
-    wipe(deleteQueue)
-    for _, item in ipairs(pendingItems) do
-        if GetInventoryItemLink("player", item.slot) then
-            deleteQueue[#deleteQueue+1] = item.slot
+    if #pendingItems == 0 then
+        print("|cffff4444GearCore:|r No pending items to process.")
+        RefreshButtonState()
+        return
+    end
+
+    local item = pendingItems[1]
+
+    if awaitingConfirmation then
+        if StaticPopup_Visible and StaticPopup_Visible("DELETE_ITEM") then
+            print("|cffff4444GearCore:|r Finish the DELETE confirmation for the current item first.")
+            return
         end
-    end
 
-    if #deleteQueue == 0 then
-        print("|cffff4444GearCore:|r No items found in marked slots.")
-        if deleteFrame then deleteFrame:Hide() end
-        return
-    end
-
-    deleteIndex = 1
-    GearCoreUI.ProcessNext()
-end
-
--- Called by GearCore on PLAYER_ALIVE with the persisted pending-deletion list.
-function GearCoreUI.TriggerDeletion(items)
-    -- Repopulate and show the window so the player can see what's being deleted.
-    GearCoreUI.ShowDeletionFrame(items)
-    -- Small delay so the resurrection animation settles before we touch inventory.
-    C_Timer.After(0.5, GearCoreUI.ExecuteDeletion)
-end
-
--- ── Deletion sequence ─────────────────────────────────────────────────────────
--- Items are moved to a bag slot first, then deleted from the bag.
--- This is necessary because equipped items cannot be deleted directly on some clients.
-
-function GearCoreUI.ProcessNext()
-    -- Pause if WoW's "type DELETE to confirm" dialog is open (rare+ items).
-    if StaticPopup_Visible and StaticPopup_Visible("DELETE_ITEM") then
-        C_Timer.After(0.5, GearCoreUI.ProcessNext)
-        return
-    end
-
-    if deleteIndex > #deleteQueue then
-        GearCoreUI.VerifyAndFinish()
-        return
-    end
-
-    local slotId = deleteQueue[deleteIndex]
-    deleteIndex  = deleteIndex + 1
-
-    ClearCursor()
-    PickupInventoryItem(slotId)
-
-    if not CursorHasItem() then
-        C_Timer.After(0.1, GearCoreUI.ProcessNext)
-        return
-    end
-
-    local bag, bagSlot = FindEmptyBagSlot()
-    if not bag then
-        ClearCursor()
-        deleteIndex = deleteIndex - 1
-        print("|cffff4444GearCore:|r Need at least 1 empty bag slot. Free up space and click Delete again.")
-        if deleteFrame then
-            deleteFrame.deleteBtn:SetText("DELETE MARKED ITEMS")
-            deleteFrame.deleteBtn:Enable()
+        local equippedLink = GetInventoryItemLink("player", item.slot)
+        if equippedLink ~= item.link then
+            equippedLink = nil
+        end
+        local bag, bagSlot = FindItemInBagsByLink(item.link)
+        if not equippedLink and not bag then
+            awaitingConfirmation = false
+            RemoveFirstPendingItem()
+            FinishQueue()
+        else
+            print("|cffff4444GearCore:|r That item is still present. Complete the delete prompt, then click again.")
         end
         return
     end
 
-    -- Equipped → bag. Use old global for both steps; C_Container.PickupContainerItem
-    -- exists on TBC Classic but only reliably handles the "place" half of the swap.
-    PickupContainerItem(bag, bagSlot)
+    local equippedLink = GetInventoryItemLink("player", item.slot)
+    if equippedLink ~= item.link then
+        equippedLink = nil
+    end
+    local bag, bagSlot = FindItemInBagsByLink(item.link)
 
-    C_Timer.After(0.3, function()
+    if not equippedLink and not bag then
+        print("|cffff4444GearCore:|r Skipping missing item: " .. (item.link or item.name or "unknown item"))
+        RemoveFirstPendingItem()
+        FinishQueue()
+        return
+    end
+
+    if equippedLink then
+        bag, bagSlot = FindEmptyBagSlot()
+        if not bag then
+            print("|cffff4444GearCore:|r Need at least 1 empty bag slot to process the next equipped item.")
+            RefreshButtonState()
+            return
+        end
+
         ClearCursor()
+        PickupInventoryItem(item.slot)
+        if not CursorHasItem() then
+            print("|cffff4444GearCore:|r Could not pick up the equipped item. Try clicking again.")
+            RefreshButtonState()
+            return
+        end
+
         PickupContainerItem(bag, bagSlot)
         if CursorHasItem() then
-            DeleteCursorItem()
+            ClearCursor()
+            print("|cffff4444GearCore:|r Could not move the equipped item into your bags.")
+            RefreshButtonState()
+            return
         end
-        C_Timer.After(0.3, GearCoreUI.ProcessNext)
-    end)
+    end
+
+    ClearCursor()
+    PickupContainerItem(bag, bagSlot)
+    if not CursorHasItem() then
+        print("|cffff4444GearCore:|r Could not pick up the item from your bag for deletion.")
+        RefreshButtonState()
+        return
+    end
+
+    DeleteCursorItem()
+
+    if StaticPopup_Visible and StaticPopup_Visible("DELETE_ITEM") then
+        awaitingConfirmation = true
+        RefreshButtonState()
+        print("|cffff4444GearCore:|r Finish the DELETE confirmation, then click the button again to continue.")
+        return
+    end
+
+    local bagStillThere = FindItemInBagsByLink(item.link)
+    local equippedStillThere = GetInventoryItemLink("player", item.slot)
+    if equippedStillThere ~= item.link then
+        equippedStillThere = nil
+    end
+    if bagStillThere or equippedStillThere then
+        print("|cffff4444GearCore:|r The item was not deleted. Try clicking the button again.")
+        RefreshButtonState()
+        return
+    end
+
+    RemoveFirstPendingItem()
+    FinishQueue()
 end
 
 -- Returns how many items are currently queued (DB + in-memory).
@@ -282,36 +371,4 @@ function GearCoreUI.ReopenDeletionFrame()
         return
     end
     GearCoreUI.ShowDeletionFrame(source)
-end
-
-function GearCoreUI.VerifyAndFinish()
-    local failCount = 0
-    for _, item in ipairs(pendingItems) do
-        local stillExists = GetInventoryItemLink("player", item.slot) ~= nil
-        -- Also check bags — a failed delete leaves the item there.
-        if not stillExists and item.link then
-            for bag = 0, 4 do
-                for slot = 1, BagGetNumSlots(bag) do
-                    if BagGetItemLink(bag, slot) == item.link then
-                        stillExists = true
-                        break
-                    end
-                end
-                if stillExists then break end
-            end
-        end
-        if stillExists then failCount = failCount + 1 end
-    end
-
-    GearCoreDB.pendingDeletion = nil
-    wipe(pendingItems)
-    wipe(deleteQueue)
-
-    if failCount > 0 then
-        print("|cffff4444GearCore:|r Warning: " .. failCount .. " item(s) could not be confirmed deleted.")
-    else
-        print("|cffff4444GearCore:|r Deletion complete — all marked items removed.")
-    end
-
-    if deleteFrame then deleteFrame:Hide() end
 end

@@ -183,11 +183,9 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                     GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
                 else
                     -- Logged in alive (soulstone, rez'd before logout, etc.).
-                    local items = GearCoreDB.pendingDeletion
-                    GearCoreDB.pendingDeletion = nil
-                    print("|cffff4444GearCore:|r Pending death penalty detected — applying...")
-                    C_Timer.After(3, function()
-                        GearCoreUI.TriggerDeletion(items)
+                    print("|cffff4444GearCore:|r Pending death penalty detected — open the GearCore window and click to process each item.")
+                    C_Timer.After(1, function()
+                        GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
                     end)
                 end
             end
@@ -215,20 +213,20 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
         if not UnitIsDeadOrGhost("player") then
             if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
-                local items = GearCoreDB.pendingDeletion
-                GearCoreDB.pendingDeletion = nil
-                print("|cffff4444GearCore:|r Resurrection — applying death penalty...")
-                C_Timer.After(1, function() GearCoreUI.TriggerDeletion(items) end)
+                print("|cffff4444GearCore:|r Resurrection detected — click the GearCore button to process your pending deletions.")
+                C_Timer.After(1, function()
+                    GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
+                end)
             end
         end
 
     elseif event == "PLAYER_UNGHOST" then
         -- Fires when the player fully resurrects from ghost state (spirit healer or corpse run).
         if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
-            local items = GearCoreDB.pendingDeletion
-            GearCoreDB.pendingDeletion = nil
-            print("|cffff4444GearCore:|r Resurrection — applying death penalty...")
-            C_Timer.After(1, function() GearCoreUI.TriggerDeletion(items) end)
+            print("|cffff4444GearCore:|r Resurrection detected — click the GearCore button to process your pending deletions.")
+            C_Timer.After(1, function()
+                GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
+            end)
         end
 
     elseif event == "MAIL_SHOW" then
