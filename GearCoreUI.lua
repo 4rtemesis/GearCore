@@ -7,6 +7,7 @@ GearCoreUI = {}
 local deleteFrame
 local pendingItems = {}
 local awaitingConfirmation = false
+local cursorArmed = false
 local processingTicker
 local lastDeleteButtonCenterX
 local lastDeleteButtonCenterY
@@ -168,6 +169,8 @@ local function RefreshButtonState()
 
     if awaitingConfirmation then
         f.deleteBtn:SetText("Continue After DELETE Prompt")
+    elseif cursorArmed and CursorHasItem() then
+        f.deleteBtn:SetText("DESTROY HELD ITEM")
     else
         f.deleteBtn:SetText("DELETE NEXT ITEM (" .. #pendingItems .. " LEFT)")
     end
@@ -302,6 +305,7 @@ function GearCoreUI.ShowDeletionFrame(items)
     wipe(pendingItems)
     for _, item in ipairs(items) do pendingItems[#pendingItems+1] = item end
     awaitingConfirmation = false
+    cursorArmed = false
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
     local f = RestoreFrameVisualState()
@@ -333,6 +337,7 @@ end
 
 local function FinishQueue()
     awaitingConfirmation = false
+    cursorArmed = false
     StopProcessingTicker()
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
@@ -420,6 +425,43 @@ local function BeginProcessingMonitor()
     end)
 end
 
+local function BeginCursorMonitor()
+    local item = pendingItems[1]
+    if not item then
+        FinishQueue()
+        return
+    end
+
+    StopProcessingTicker()
+    DebugPrint("BeginCursorMonitor for " .. tostring(item.link or item.name))
+
+    processingTicker = C_Timer.NewTicker(0.1, function()
+        if CursorHasItem() then
+            return
+        end
+
+        StopProcessingTicker()
+        ShowActiveFrame()
+
+        local equippedLink, bag = GetTrackedItemState(item)
+        DebugPrint("Cursor monitor clear: equipped=" .. tostring(equippedLink) .. " bag=" .. tostring(bag))
+
+        if not equippedLink and not bag then
+            cursorArmed = false
+            awaitingConfirmation = false
+            DebugPrint("Cursor monitor: item disappeared unexpectedly, advancing queue")
+            RemoveFirstPendingItem()
+            FinishQueue()
+            return
+        end
+
+        cursorArmed = false
+        awaitingConfirmation = false
+        RefreshButtonState()
+        print("|cffff4444GearCore:|r Held item was returned. Click again to retry.")
+    end)
+end
+
 function GearCoreUI.ExecuteDeletion()
     if UnitIsDeadOrGhost("player") then
         print("|cffff4444GearCore:|r You must resurrect before deleting queued items.")
@@ -464,6 +506,27 @@ function GearCoreUI.ExecuteDeletion()
         else
             print("|cffff4444GearCore:|r That item is still present. Confirm the popup, then click again if needed.")
         end
+        return
+    end
+
+    if cursorArmed then
+        if not CursorHasItem() then
+            cursorArmed = false
+            ShowActiveFrame()
+            RefreshButtonState()
+            print("|cffff4444GearCore:|r Held item was cleared. Click again to retry.")
+            return
+        end
+
+        HideNow()
+        DeleteCursorItem()
+        awaitingConfirmation = GetDeletePopupFrame() and true or false
+        cursorArmed = false
+        if awaitingConfirmation then
+            PositionDeletePopup()
+        end
+        DebugPrint("ExecuteDeletion second click: DeleteCursorItem called, awaitingConfirmation=" .. tostring(awaitingConfirmation) .. " cursorHasItem=" .. tostring(CursorHasItem()))
+        BeginProcessingMonitor()
         return
     end
 
@@ -515,13 +578,12 @@ function GearCoreUI.ExecuteDeletion()
         return
     end
 
-    DeleteCursorItem()
-    awaitingConfirmation = GetDeletePopupFrame() and true or false
-    if awaitingConfirmation then
-        PositionDeletePopup()
-    end
-    DebugPrint("ExecuteDeletion: DeleteCursorItem called, awaitingConfirmation=" .. tostring(awaitingConfirmation) .. " cursorHasItem=" .. tostring(CursorHasItem()))
-    BeginProcessingMonitor()
+    cursorArmed = true
+    awaitingConfirmation = false
+    RestoreNow()
+    RefreshButtonState()
+    DebugPrint("ExecuteDeletion first click: item picked up, waiting for destroy click")
+    BeginCursorMonitor()
 end
 
 -- Returns how many items are currently queued (DB + in-memory).
