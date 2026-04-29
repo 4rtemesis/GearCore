@@ -1,0 +1,10 @@
+## Interface: 11506
+## Title: GearCore
+## Notes: Hardcore gear loss on death for WoW Classic
+## Author: GearCore
+## Version: 1.0
+## SavedVariables: GearCoreDB
+
+GearCore.lua
+GearCoreOptions.lua
+GearCoreUI.lua
