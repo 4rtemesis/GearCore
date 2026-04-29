@@ -57,6 +57,8 @@ local function BuildFrame()
 
     local warn = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     warn:SetPoint("TOP", btn, "BOTTOM", 0, -8)
+    warn:SetWidth(270)
+    warn:SetJustifyH("CENTER")
     warn:SetTextColor(1, 0.3, 0.3)
     warn:SetText("The window will step aside while each item is being processed.")
 
@@ -280,7 +282,7 @@ local function ResolveProcessingState()
         return
     end
 
-    C_Timer.After(0.2, function()
+    local function CheckDeleteRetry(remaining)
         if not pendingItems[1] or pendingItems[1] ~= item then
             return
         end
@@ -295,10 +297,21 @@ local function ResolveProcessingState()
             return
         end
 
+        if remaining > 0 then
+            C_Timer.After(0.15, function()
+                CheckDeleteRetry(remaining - 1)
+            end)
+            return
+        end
+
         cursorArmed = false
         awaitingConfirmation = false
         RefreshButtonState()
         print("|cffff4444GearCore:|r Item was not deleted. Click again to retry.")
+    end
+
+    C_Timer.After(0.15, function()
+        CheckDeleteRetry(3)
     end)
 end
 
@@ -631,7 +644,7 @@ local function BeginMoveMonitor()
             return
         end
 
-        C_Timer.After(0.2, function()
+        local function CheckMoveRetry(remaining)
             if not pendingItems[1] or pendingItems[1] ~= item then
                 return
             end
@@ -646,18 +659,25 @@ local function BeginMoveMonitor()
                 return
             end
 
-            if equippedRetry then
-                awaitingConfirmation = false
-                cursorArmed = false
-                RefreshButtonState()
-                print("|cffff4444GearCore:|r Item was returned to its equipment slot. Click again to retry.")
+            if remaining > 0 then
+                C_Timer.After(0.15, function()
+                    CheckMoveRetry(remaining - 1)
+                end)
                 return
             end
 
             awaitingConfirmation = false
             cursorArmed = false
             RefreshButtonState()
-            print("|cffff4444GearCore:|r Item could not be prepared for deletion. Click again to retry.")
+            if equippedRetry then
+                print("|cffff4444GearCore:|r Item was returned to its equipment slot. Click again to retry.")
+            else
+                print("|cffff4444GearCore:|r Item could not be prepared for deletion. Click again to retry.")
+            end
+        end
+
+        C_Timer.After(0.15, function()
+            CheckMoveRetry(3)
         end)
     end)
 end
