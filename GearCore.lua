@@ -168,6 +168,7 @@ eventFrame:RegisterEvent("AUCTION_HOUSE_SHOW")
 eventFrame:RegisterEvent("TRADE_SHOW")
 eventFrame:RegisterEvent("MERCHANT_SHOW")
 eventFrame:RegisterEvent("MERCHANT_CLOSED")
+eventFrame:RegisterEvent("PLAYER_UNGHOST")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
@@ -178,7 +179,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             -- Handle pending deletions from a previous session (player logged out while dead).
             if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
                 if UnitIsDeadOrGhost("player") then
-                    -- Still dead: show the window, wait for PLAYER_ALIVE to fire.
+                    -- Still dead/ghost: show the window, wait for PLAYER_UNGHOST to fire.
                     GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
                 else
                     -- Logged in alive (soulstone, rez'd before logout, etc.).
@@ -206,18 +207,28 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         OnPlayerDead()
 
     elseif event == "PLAYER_ALIVE" then
+        -- Fires on release-spirit (player is still a ghost) AND on battle-rez (fully alive).
+        -- Only trigger deletion here for the battle-rez case; spirit-healer uses PLAYER_UNGHOST.
         isDead = false
         wipe(combatSnapshot)
         wipe(markedItems)
 
-        -- Execute the death penalty now that the player is alive and can move items.
+        if not UnitIsDeadOrGhost("player") then
+            if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
+                local items = GearCoreDB.pendingDeletion
+                GearCoreDB.pendingDeletion = nil
+                print("|cffff4444GearCore:|r Resurrection — applying death penalty...")
+                C_Timer.After(1, function() GearCoreUI.TriggerDeletion(items) end)
+            end
+        end
+
+    elseif event == "PLAYER_UNGHOST" then
+        -- Fires when the player fully resurrects from ghost state (spirit healer or corpse run).
         if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
             local items = GearCoreDB.pendingDeletion
             GearCoreDB.pendingDeletion = nil
-            print("|cffff4444GearCore:|r Resurrection detected — applying death penalty...")
-            C_Timer.After(1, function()
-                GearCoreUI.TriggerDeletion(items)
-            end)
+            print("|cffff4444GearCore:|r Resurrection — applying death penalty...")
+            C_Timer.After(1, function() GearCoreUI.TriggerDeletion(items) end)
         end
 
     elseif event == "MAIL_SHOW" then
