@@ -308,9 +308,22 @@ local function FinishQueue()
     end
 
     local f = EnsureFrame()
+    if GearCoreOptions and GearCoreOptions.Hide then
+        GearCoreOptions.Hide()
+    end
+    f:SetParent(UIParent)
+    f:SetAlpha(1)
+    f:SetFrameStrata("DIALOG")
     RefreshButtonState()
     f:Show()
     f:Raise()
+    C_Timer.After(0, function()
+        if #pendingItems > 0 and deleteFrame then
+            deleteFrame:SetAlpha(1)
+            deleteFrame:Show()
+            deleteFrame:Raise()
+        end
+    end)
 end
 
 local function GetTrackedItemState(item)
