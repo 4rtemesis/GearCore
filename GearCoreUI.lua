@@ -8,7 +8,6 @@ local deleteFrame
 local pendingItems = {}
 local awaitingConfirmation = false
 local cursorArmed = false
-local moveReady = false
 local processingTicker
 local lastDeleteButtonCenterX
 local lastDeleteButtonCenterY
@@ -172,8 +171,6 @@ local function RefreshButtonState()
         f.deleteBtn:SetText("Continue After DELETE Prompt")
     elseif cursorArmed and CursorHasItem() then
         f.deleteBtn:SetText("DESTROY HELD ITEM")
-    elseif moveReady then
-        f.deleteBtn:SetText("PICK UP ITEM TO DESTROY")
     else
         f.deleteBtn:SetText("DELETE NEXT ITEM (" .. #pendingItems .. " LEFT)")
     end
@@ -211,7 +208,6 @@ local function ResolveProcessingState()
     if not equippedLink and not bag then
         cursorArmed = false
         awaitingConfirmation = false
-        moveReady = false
         DebugPrint("ResolveProcessingState: item gone, advancing queue")
         RemoveFirstPendingItem()
         FinishQueue()
@@ -220,7 +216,6 @@ local function ResolveProcessingState()
 
     cursorArmed = false
     awaitingConfirmation = false
-    moveReady = false
     RefreshButtonState()
     DebugPrint("ResolveProcessingState: item still present, restoring queue")
     print("|cffff4444GearCore:|r Item was not deleted. Click again to retry.")
@@ -354,7 +349,6 @@ function GearCoreUI.ShowDeletionFrame(items)
     for _, item in ipairs(items) do pendingItems[#pendingItems+1] = item end
     awaitingConfirmation = false
     cursorArmed = false
-    moveReady = false
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
     local f = RestoreFrameVisualState()
@@ -387,7 +381,6 @@ end
 local function FinishQueue()
     awaitingConfirmation = false
     cursorArmed = false
-    moveReady = false
     StopProcessingTicker()
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
@@ -483,7 +476,6 @@ local function BeginCursorMonitor()
         if not equippedLink and not bag then
             cursorArmed = false
             awaitingConfirmation = false
-            moveReady = false
             DebugPrint("Cursor monitor: item disappeared unexpectedly, advancing queue")
             RemoveFirstPendingItem()
             FinishQueue()
@@ -492,7 +484,6 @@ local function BeginCursorMonitor()
 
         cursorArmed = false
         awaitingConfirmation = false
-        moveReady = true
         RefreshButtonState()
         print("|cffff4444GearCore:|r Held item was returned. Click again to retry.")
     end)
@@ -515,7 +506,6 @@ local function BeginArmMonitor()
             StopProcessingTicker()
             cursorArmed = true
             awaitingConfirmation = false
-            moveReady = false
             ShowActiveFrame()
             RefreshButtonState()
             DebugPrint("Arm monitor: cursor now holds item")
@@ -527,7 +517,6 @@ local function BeginArmMonitor()
             StopProcessingTicker()
             cursorArmed = false
             awaitingConfirmation = false
-            moveReady = false
             ShowActiveFrame()
             DebugPrint("Arm monitor: item disappeared before arm finished")
             RemoveFirstPendingItem()
@@ -538,7 +527,6 @@ local function BeginArmMonitor()
         StopProcessingTicker()
         cursorArmed = false
         awaitingConfirmation = false
-        moveReady = true
         ShowActiveFrame()
         RefreshButtonState()
         DebugPrint("Arm monitor: cursor did not retain item")
@@ -558,29 +546,31 @@ local function BeginMoveMonitor()
 
     processingTicker = C_Timer.NewTicker(0.1, function()
         if CursorHasItem() then
+            DebugPrint("Move monitor: cursor still has item")
             return
         end
 
         local equippedLink, bag = GetTrackedItemState(item)
-        if equippedLink then
-            DebugPrint("Move monitor: item still equipped")
-            return
-        end
-
         StopProcessingTicker()
         ShowActiveFrame()
         DebugPrint("Move monitor clear: equipped=" .. tostring(equippedLink) .. " bag=" .. tostring(bag))
 
         if bag then
-            moveReady = true
             awaitingConfirmation = false
             cursorArmed = false
             RefreshButtonState()
-            print("|cffff4444GearCore:|r Item moved to bag. Click again to pick it up for deletion.")
+            print("|cffff4444GearCore:|r Item moved to bag. Click Delete Next Item again to pick it up.")
             return
         end
 
-        moveReady = false
+        if equippedLink then
+            awaitingConfirmation = false
+            cursorArmed = false
+            RefreshButtonState()
+            print("|cffff4444GearCore:|r Item was returned to its equipment slot. Click again to retry.")
+            return
+        end
+
         awaitingConfirmation = false
         cursorArmed = false
         RefreshButtonState()
@@ -628,7 +618,6 @@ function GearCoreUI.ExecuteDeletion()
         if not equippedLink and not bag then
             awaitingConfirmation = false
             cursorArmed = false
-            moveReady = false
             RemoveFirstPendingItem()
             FinishQueue()
         else
@@ -640,7 +629,6 @@ function GearCoreUI.ExecuteDeletion()
     if cursorArmed then
         if not CursorHasItem() then
             cursorArmed = false
-            moveReady = true
             ShowActiveFrame()
             RefreshButtonState()
             print("|cffff4444GearCore:|r Held item was cleared. Click again to retry.")
@@ -688,7 +676,6 @@ function GearCoreUI.ExecuteDeletion()
             return
         end
 
-        moveReady = false
         cursorArmed = false
         awaitingConfirmation = false
         BeginMoveMonitor()
@@ -698,7 +685,6 @@ function GearCoreUI.ExecuteDeletion()
     end
 
     ClearCursor()
-    moveReady = false
     BeginArmMonitor()
     PickupContainerItem(bag, bagSlot)
     DebugPrint("ExecuteDeletion first click: attempted bag pickup for arming")
