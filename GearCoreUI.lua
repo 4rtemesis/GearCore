@@ -11,6 +11,8 @@ local cursorArmed = false
 local processingTicker
 local lastDeleteButtonCenterX
 local lastDeleteButtonCenterY
+local lastConfirmButtonCenterX
+local lastConfirmButtonCenterY
 local DEBUG = true
 local GetDeletePopupFrame
 
@@ -103,16 +105,43 @@ local function GetConfirmButtonTargetCenter()
     if popup and popup.button1 then
         local x, y = popup.button1:GetCenter()
         if x and y then
+            lastConfirmButtonCenterX, lastConfirmButtonCenterY = x, y
             return x, y
         end
+    end
+
+    if lastConfirmButtonCenterX and lastConfirmButtonCenterY then
+        return lastConfirmButtonCenterX, lastConfirmButtonCenterY
     end
 
     local defaultButton = _G["StaticPopup1Button1"]
     if defaultButton then
         local x, y = defaultButton:GetCenter()
         if x and y then
+            lastConfirmButtonCenterX, lastConfirmButtonCenterY = x, y
             return x, y
         end
+    end
+
+    local defaultPopup = _G["StaticPopup1"]
+    if defaultPopup and defaultPopup.button1 then
+        local _, _, _, popupX, popupY = defaultPopup:GetPoint(1)
+        popupX = popupX or 0
+        popupY = popupY or 0
+
+        local point, _, _, relX, relY = defaultPopup.button1:GetPoint(1)
+        relX = relX or 0
+        relY = relY or 0
+
+        local buttonWidth = defaultPopup.button1:GetWidth() or 0
+        local buttonHeight = defaultPopup.button1:GetHeight() or 0
+        local popupWidth = defaultPopup:GetWidth() or 0
+        local popupHeight = defaultPopup:GetHeight() or 0
+
+        local x = (GetScreenWidth() / 2) + popupX - (popupWidth / 2) + relX + (buttonWidth / 2)
+        local y = (GetScreenHeight() / 2) + popupY - (popupHeight / 2) + relY + (buttonHeight / 2)
+        lastConfirmButtonCenterX, lastConfirmButtonCenterY = x, y
+        return x, y
     end
 
     return nil, nil
@@ -321,6 +350,9 @@ local function PositionDeletePopup()
     local confirmCenterX, confirmCenterY
     if popup.button1 then
         confirmCenterX, confirmCenterY = popup.button1:GetCenter()
+        if confirmCenterX and confirmCenterY then
+            lastConfirmButtonCenterX, lastConfirmButtonCenterY = confirmCenterX, confirmCenterY
+        end
     end
     if not popupCenterX or not popupCenterY or not confirmCenterX or not confirmCenterY then
         popup:ClearAllPoints()

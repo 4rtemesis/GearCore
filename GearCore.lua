@@ -101,12 +101,12 @@ local function BuildMarkedItems(source)
         markedItems[1] = source[math.random(#source)]
 
     elseif difficulty == 2 then
-        -- Difficult: keep 2 random items, lose the rest
-        if #source <= 2 then return end
+        -- Difficult: lose half your equipped items, rounded up
         local pool = {}
         for _, item in ipairs(source) do pool[#pool+1] = item end
         ShuffleInPlace(pool)
-        for i = 3, #pool do
+        local loseCount = math.ceil(#pool / 2)
+        for i = 1, loseCount do
             markedItems[#markedItems+1] = pool[i]
         end
 

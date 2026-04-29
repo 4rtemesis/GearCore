@@ -8,7 +8,7 @@ local optFrame
 local DIFF_LABELS = { [1]="Lite", [2]="Difficult", [3]="Extreme" }
 local DIFF_DESCS  = {
     [1] = "Lose 1 random equipped item on death.",
-    [2] = "Keep 2 random items — lose everything else.",
+    [2] = "Lose half your equipped items at random, rounded up.",
     [3] = "Lose every equipped item on death.",
 }
 
@@ -116,7 +116,7 @@ local function BuildOptionsFrame()
     slider:SetValueStep(1)
 
     local sliderTrack = CreateFrame("Frame", nil, f, backdropTemplate)
-    sliderTrack:SetSize(236, 8)
+    sliderTrack:SetSize(300, 8)
     sliderTrack:SetPoint("CENTER", slider, "CENTER", 0, -1)
     sliderTrack:SetFrameLevel(slider:GetFrameLevel() - 1)
     sliderTrack:SetBackdrop({
@@ -133,13 +133,29 @@ local function BuildOptionsFrame()
     local sliderLow  = _G[slider:GetName().."Low"]
     local sliderHigh = _G[slider:GetName().."High"]
     local sliderText = _G[slider:GetName().."Text"]
-    if sliderLow  then sliderLow:SetText("Lite")    end
-    if sliderHigh then sliderHigh:SetText("Extreme") end
-    if sliderText then sliderText:SetText(DIFF_LABELS[GearCore.GetSetting("difficulty")]) end
+    if sliderLow then
+        sliderLow:SetText("Lite")
+        sliderLow:ClearAllPoints()
+        sliderLow:SetPoint("TOPLEFT", sliderTrack, "BOTTOMLEFT", -2, -6)
+    end
+    if sliderHigh then
+        sliderHigh:SetText("Extreme")
+        sliderHigh:ClearAllPoints()
+        sliderHigh:SetPoint("TOPRIGHT", sliderTrack, "BOTTOMRIGHT", 2, -6)
+    end
+    if sliderText then
+        sliderText:SetText(DIFF_LABELS[GearCore.GetSetting("difficulty")])
+        sliderText:ClearAllPoints()
+        sliderText:SetPoint("BOTTOMLEFT", sliderTrack, "TOPLEFT", 0, 12)
+        sliderText:SetJustifyH("LEFT")
+        sliderText:SetWidth(300)
+    end
     f.sliderText = sliderText  -- save ref for OnShow refresh
 
     local diffDesc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    diffDesc:SetPoint("TOP", slider, "BOTTOM", 0, -10)
+    diffDesc:SetPoint("TOPLEFT", sliderTrack, "BOTTOMLEFT", 16, -28)
+    diffDesc:SetWidth(284)
+    diffDesc:SetJustifyH("LEFT")
     diffDesc:SetTextColor(1, 0.82, 0)
     diffDesc:SetText(DIFF_DESCS[GearCore.GetSetting("difficulty")])
 
