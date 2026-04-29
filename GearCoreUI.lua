@@ -8,6 +8,8 @@ local deleteFrame
 local pendingItems = {}
 local awaitingConfirmation = false
 local processingTicker
+local lastDeleteButtonCenterX
+local lastDeleteButtonCenterY
 
 -- On the modern WoW engine (post-Shadowlands, used by all Anniversary clients),
 -- SetBackdrop is only available on frames that inherit BackdropTemplate.
@@ -66,7 +68,7 @@ local function BuildFrame()
     local warn = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     warn:SetPoint("BOTTOM", f, "BOTTOM", 0, 52)
     warn:SetTextColor(1, 0.3, 0.3)
-    warn:SetText("Rare+ items require you to type DELETE in the confirmation box.")
+    warn:SetText("The window will step aside while each item is being processed.")
 
     local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     btn:SetSize(210, 30)
@@ -134,19 +136,53 @@ end
 
 local function GetDeletePopupFrame()
     if StaticPopup_Visible then
-        return StaticPopup_Visible("DELETE_ITEM") or StaticPopup_Visible("DELETE_GOOD_ITEM")
+        local popup = StaticPopup_Visible("DELETE_ITEM") or StaticPopup_Visible("DELETE_GOOD_ITEM")
+        if type(popup) == "string" then
+            return _G[popup]
+        end
+        return popup
     end
     return nil
 end
 
 local function PositionDeletePopup()
     local popup = GetDeletePopupFrame()
-    if not popup then
+    local f = deleteFrame
+    if not popup or not f or not f.deleteBtn then
         return
     end
 
+    local btn = f.deleteBtn
+    local targetX = lastDeleteButtonCenterX
+    local targetY = lastDeleteButtonCenterY
+    if not targetX or not targetY then
+        targetX, targetY = btn:GetCenter()
+    end
+
+    if not targetX or not targetY then
+        popup:ClearAllPoints()
+        popup:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        return
+    end
+
+    local popupCenterX, popupCenterY = popup:GetCenter()
+    local confirmCenterX, confirmCenterY
+    if popup.button1 then
+        confirmCenterX, confirmCenterY = popup.button1:GetCenter()
+    end
+    if not popupCenterX or not popupCenterY or not confirmCenterX or not confirmCenterY then
+        popup:ClearAllPoints()
+        popup:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        return
+    end
+
+    local offsetX = confirmCenterX - popupCenterX
+    local offsetY = confirmCenterY - popupCenterY
+    local desiredCenterX = targetX - offsetX
+    local desiredCenterY = targetY - offsetY
+
     popup:ClearAllPoints()
-    popup:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    popup:SetPoint("CENTER", UIParent, "BOTTOMLEFT", desiredCenterX, desiredCenterY)
 end
 
 -- ── Item list population ──────────────────────────────────────────────────────
@@ -271,7 +307,10 @@ local function FinishQueue()
         return
     end
 
+    local f = EnsureFrame()
     RefreshButtonState()
+    f:Show()
+    f:Raise()
 end
 
 local function GetTrackedItemState(item)
@@ -291,7 +330,8 @@ local function ShowActiveFrame()
 end
 
 local function HideProcessingFrame()
-    if deleteFrame then
+    if deleteFrame and deleteFrame.deleteBtn then
+        lastDeleteButtonCenterX, lastDeleteButtonCenterY = deleteFrame.deleteBtn:GetCenter()
         deleteFrame:Hide()
     end
 end
@@ -326,12 +366,10 @@ local function BeginProcessingMonitor()
             return
         end
 
-        if awaitingConfirmation then
-            awaitingConfirmation = false
-            StopProcessingTicker()
-            ShowActiveFrame()
-            print("|cffff4444GearCore:|r That item is still present. Click again to retry this one.")
-        end
+        awaitingConfirmation = false
+        StopProcessingTicker()
+        ShowActiveFrame()
+        print("|cffff4444GearCore:|r That item is still present. Click again to retry this one.")
     end)
 end
 
@@ -401,9 +439,11 @@ function GearCoreUI.ExecuteDeletion()
         end
     end
 
+    HideProcessingFrame()
     ClearCursor()
     PickupContainerItem(bag, bagSlot)
     if not CursorHasItem() then
+        ShowActiveFrame()
         print("|cffff4444GearCore:|r Could not pick up the item from your bag for deletion.")
         RefreshButtonState()
         return
@@ -422,6 +462,7 @@ function GearCoreUI.ExecuteDeletion()
 
     local equippedStillThere, bagStillThere = GetTrackedItemState(item)
     if bagStillThere or equippedStillThere then
+        ShowActiveFrame()
         print("|cffff4444GearCore:|r The item was not deleted. Try clicking the button again.")
         RefreshButtonState()
         return
