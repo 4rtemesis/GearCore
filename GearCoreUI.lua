@@ -145,21 +145,6 @@ local function BagGetItemLink(bag, slot)
     return GetContainerItemLink(bag, slot)
 end
 
-local function BagPickup(bag, slot)
-    if C_Container then C_Container.PickupContainerItem(bag, slot)
-    else PickupContainerItem(bag, slot) end
-end
-
-local function FindEmptyBagSlot()
-    for bag = 0, 4 do
-        for slot = 1, BagGetNumSlots(bag) do
-            if not BagGetItemLink(bag, slot) then
-                return bag, slot
-            end
-        end
-    end
-    return nil, nil
-end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
@@ -238,34 +223,12 @@ function GearCoreUI.ProcessNext()
     PickupInventoryItem(slotId)
 
     if not CursorHasItem() then
-        C_Timer.After(0, GearCoreUI.ProcessNext)
+        C_Timer.After(0.1, GearCoreUI.ProcessNext)
         return
     end
 
-    local bag, bagSlot = FindEmptyBagSlot()
-    if not bag then
-        ClearCursor()
-        deleteIndex = deleteIndex - 1
-        print("|cffff4444GearCore:|r Need at least 1 empty bag slot. Free up space and click Delete again.")
-        if deleteFrame then
-            deleteFrame.deleteBtn:SetText("DELETE MARKED ITEMS")
-            deleteFrame.deleteBtn:Enable()
-        end
-        return
-    end
-
-    -- Move: equipped slot → bag slot
-    BagPickup(bag, bagSlot)
-
-    -- One tick for the client to register the move, then pick up from bag and delete.
-    C_Timer.After(0.25, function()
-        ClearCursor()
-        BagPickup(bag, bagSlot)
-        if CursorHasItem() then
-            DeleteCursorItem()
-        end
-        C_Timer.After(0.25, GearCoreUI.ProcessNext)
-    end)
+    DeleteCursorItem()
+    C_Timer.After(0.3, GearCoreUI.ProcessNext)
 end
 
 -- Returns how many items are currently queued (DB + in-memory).
@@ -291,16 +254,28 @@ end
 function GearCoreUI.VerifyAndFinish()
     local failCount = 0
     for _, item in ipairs(pendingItems) do
-        if GetInventoryItemLink("player", item.slot) then
-            failCount = failCount + 1
+        local stillExists = GetInventoryItemLink("player", item.slot) ~= nil
+        -- Also check bags — a failed delete leaves the item there.
+        if not stillExists and item.link then
+            for bag = 0, 4 do
+                for slot = 1, BagGetNumSlots(bag) do
+                    if BagGetItemLink(bag, slot) == item.link then
+                        stillExists = true
+                        break
+                    end
+                end
+                if stillExists then break end
+            end
         end
+        if stillExists then failCount = failCount + 1 end
     end
 
+    GearCoreDB.pendingDeletion = nil
     wipe(pendingItems)
     wipe(deleteQueue)
 
     if failCount > 0 then
-        print("|cffff4444GearCore:|r Warning: " .. failCount .. " item(s) may not have been deleted — check your equipped slots.")
+        print("|cffff4444GearCore:|r Warning: " .. failCount .. " item(s) could not be confirmed deleted.")
     else
         print("|cffff4444GearCore:|r Deletion complete — all marked items removed.")
     end
