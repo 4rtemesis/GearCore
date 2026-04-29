@@ -145,6 +145,17 @@ local function BagGetItemLink(bag, slot)
     return GetContainerItemLink(bag, slot)
 end
 
+local function FindEmptyBagSlot()
+    for bag = 0, 4 do
+        for slot = 1, BagGetNumSlots(bag) do
+            if not BagGetItemLink(bag, slot) then
+                return bag, slot
+            end
+        end
+    end
+    return nil, nil
+end
+
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
@@ -227,8 +238,30 @@ function GearCoreUI.ProcessNext()
         return
     end
 
-    DeleteCursorItem()
-    C_Timer.After(0.3, GearCoreUI.ProcessNext)
+    local bag, bagSlot = FindEmptyBagSlot()
+    if not bag then
+        ClearCursor()
+        deleteIndex = deleteIndex - 1
+        print("|cffff4444GearCore:|r Need at least 1 empty bag slot. Free up space and click Delete again.")
+        if deleteFrame then
+            deleteFrame.deleteBtn:SetText("DELETE MARKED ITEMS")
+            deleteFrame.deleteBtn:Enable()
+        end
+        return
+    end
+
+    -- Equipped → bag. Use old global for both steps; C_Container.PickupContainerItem
+    -- exists on TBC Classic but only reliably handles the "place" half of the swap.
+    PickupContainerItem(bag, bagSlot)
+
+    C_Timer.After(0.3, function()
+        ClearCursor()
+        PickupContainerItem(bag, bagSlot)
+        if CursorHasItem() then
+            DeleteCursorItem()
+        end
+        C_Timer.After(0.3, GearCoreUI.ProcessNext)
+    end)
 end
 
 -- Returns how many items are currently queued (DB + in-memory).
