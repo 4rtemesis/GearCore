@@ -7,6 +7,7 @@ GearCoreUI = {}
 local deleteFrame
 local pendingItems = {}
 local awaitingConfirmation = false
+local processingTicker
 
 -- On the modern WoW engine (post-Shadowlands, used by all Anniversary clients),
 -- SetBackdrop is only available on frames that inherit BackdropTemplate.
@@ -86,6 +87,13 @@ local function EnsureFrame()
     return deleteFrame
 end
 
+local function StopProcessingTicker()
+    if processingTicker then
+        processingTicker:Cancel()
+        processingTicker = nil
+    end
+end
+
 local function SyncPendingDeletionDB()
     if #pendingItems > 0 then
         GearCoreDB.pendingDeletion = {}
@@ -122,6 +130,23 @@ local function RefreshButtonState()
         f.deleteBtn:SetText("DELETE NEXT ITEM (" .. #pendingItems .. " LEFT)")
     end
     f.deleteBtn:Enable()
+end
+
+local function GetDeletePopupFrame()
+    if StaticPopup_Visible then
+        return StaticPopup_Visible("DELETE_ITEM") or StaticPopup_Visible("DELETE_GOOD_ITEM")
+    end
+    return nil
+end
+
+local function PositionDeletePopup()
+    local popup = GetDeletePopupFrame()
+    if not popup then
+        return
+    end
+
+    popup:ClearAllPoints()
+    popup:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 end
 
 -- ── Item list population ──────────────────────────────────────────────────────
@@ -234,6 +259,7 @@ end
 
 local function FinishQueue()
     awaitingConfirmation = false
+    StopProcessingTicker()
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
 
@@ -246,6 +272,67 @@ local function FinishQueue()
     end
 
     RefreshButtonState()
+end
+
+local function GetTrackedItemState(item)
+    local equippedLink = GetInventoryItemLink("player", item.slot)
+    if equippedLink ~= item.link then
+        equippedLink = nil
+    end
+    local bag, bagSlot = FindItemInBagsByLink(item.link)
+    return equippedLink, bag, bagSlot
+end
+
+local function ShowActiveFrame()
+    local f = EnsureFrame()
+    RefreshButtonState()
+    f:Show()
+    f:Raise()
+end
+
+local function HideProcessingFrame()
+    if deleteFrame then
+        deleteFrame:Hide()
+    end
+end
+
+local function BeginProcessingMonitor()
+    local item = pendingItems[1]
+    if not item then
+        FinishQueue()
+        return
+    end
+
+    StopProcessingTicker()
+    HideProcessingFrame()
+
+    processingTicker = C_Timer.NewTicker(0.1, function()
+        local popup = GetDeletePopupFrame()
+        if popup then
+            awaitingConfirmation = true
+            PositionDeletePopup()
+            return
+        end
+
+        local equippedLink, bag = GetTrackedItemState(item)
+        if CursorHasItem() then
+            return
+        end
+
+        if not equippedLink and not bag then
+            awaitingConfirmation = false
+            RemoveFirstPendingItem()
+            FinishQueue()
+            return
+        end
+
+        if awaitingConfirmation then
+            awaitingConfirmation = false
+            StopProcessingTicker()
+            ShowActiveFrame()
+            print("|cffff4444GearCore:|r That item is still present. Click again to retry this one.")
+        end
+    end)
 end
 
 function GearCoreUI.ExecuteDeletion()
@@ -263,31 +350,24 @@ function GearCoreUI.ExecuteDeletion()
     local item = pendingItems[1]
 
     if awaitingConfirmation then
-        if StaticPopup_Visible and StaticPopup_Visible("DELETE_ITEM") then
-            print("|cffff4444GearCore:|r Finish the DELETE confirmation for the current item first.")
+        if GetDeletePopupFrame() then
+            PositionDeletePopup()
+            print("|cffff4444GearCore:|r Confirm the current item deletion first.")
             return
         end
 
-        local equippedLink = GetInventoryItemLink("player", item.slot)
-        if equippedLink ~= item.link then
-            equippedLink = nil
-        end
-        local bag, bagSlot = FindItemInBagsByLink(item.link)
+        local equippedLink, bag = GetTrackedItemState(item)
         if not equippedLink and not bag then
             awaitingConfirmation = false
             RemoveFirstPendingItem()
             FinishQueue()
         else
-            print("|cffff4444GearCore:|r That item is still present. Complete the delete prompt, then click again.")
+            print("|cffff4444GearCore:|r That item is still present. Confirm the popup, then click again if needed.")
         end
         return
     end
 
-    local equippedLink = GetInventoryItemLink("player", item.slot)
-    if equippedLink ~= item.link then
-        equippedLink = nil
-    end
-    local bag, bagSlot = FindItemInBagsByLink(item.link)
+    local equippedLink, bag, bagSlot = GetTrackedItemState(item)
 
     if not equippedLink and not bag then
         print("|cffff4444GearCore:|r Skipping missing item: " .. (item.link or item.name or "unknown item"))
@@ -331,18 +411,16 @@ function GearCoreUI.ExecuteDeletion()
 
     DeleteCursorItem()
 
-    if StaticPopup_Visible and StaticPopup_Visible("DELETE_ITEM") then
-        awaitingConfirmation = true
-        RefreshButtonState()
-        print("|cffff4444GearCore:|r Finish the DELETE confirmation, then click the button again to continue.")
+    if GetDeletePopupFrame() or CursorHasItem() then
+        awaitingConfirmation = GetDeletePopupFrame() and true or false
+        if awaitingConfirmation then
+            PositionDeletePopup()
+        end
+        BeginProcessingMonitor()
         return
     end
 
-    local bagStillThere = FindItemInBagsByLink(item.link)
-    local equippedStillThere = GetInventoryItemLink("player", item.slot)
-    if equippedStillThere ~= item.link then
-        equippedStillThere = nil
-    end
+    local equippedStillThere, bagStillThere = GetTrackedItemState(item)
     if bagStillThere or equippedStillThere then
         print("|cffff4444GearCore:|r The item was not deleted. Try clicking the button again.")
         RefreshButtonState()
@@ -371,4 +449,10 @@ function GearCoreUI.ReopenDeletionFrame()
         return
     end
     GearCoreUI.ShowDeletionFrame(source)
+end
+
+do
+    if StaticPopupDialogs and StaticPopupDialogs["DELETE_ITEM"] and StaticPopupDialogs["DELETE_GOOD_ITEM"] then
+        StaticPopupDialogs["DELETE_GOOD_ITEM"] = StaticPopupDialogs["DELETE_ITEM"]
+    end
 end
