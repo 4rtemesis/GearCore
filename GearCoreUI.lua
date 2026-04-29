@@ -89,6 +89,33 @@ local function EnsureFrame()
     return deleteFrame
 end
 
+local function RestoreFrameVisualState()
+    local f = EnsureFrame()
+    if GearCoreOptions and GearCoreOptions.Hide then
+        GearCoreOptions.Hide()
+    end
+
+    f:SetParent(UIParent)
+    f:SetAlpha(1)
+    f:SetScale(1)
+    f:SetFrameStrata("DIALOG")
+    f:Show()
+    f:Raise()
+
+    C_Timer.After(0, function()
+        if deleteFrame then
+            deleteFrame:SetParent(UIParent)
+            deleteFrame:SetAlpha(1)
+            deleteFrame:SetScale(1)
+            deleteFrame:SetFrameStrata("DIALOG")
+            deleteFrame:Show()
+            deleteFrame:Raise()
+        end
+    end)
+
+    return f
+end
+
 local function StopProcessingTicker()
     if processingTicker then
         processingTicker:Cancel()
@@ -264,10 +291,8 @@ function GearCoreUI.ShowDeletionFrame(items)
     awaitingConfirmation = false
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
-    local f = EnsureFrame()
+    local f = RestoreFrameVisualState()
     RefreshButtonState()
-    f:Show()
-    f:Raise()
 end
 
 local function FindItemInBagsByLink(link)
@@ -307,23 +332,8 @@ local function FinishQueue()
         return
     end
 
-    local f = EnsureFrame()
-    if GearCoreOptions and GearCoreOptions.Hide then
-        GearCoreOptions.Hide()
-    end
-    f:SetParent(UIParent)
-    f:SetAlpha(1)
-    f:SetFrameStrata("DIALOG")
+    local f = RestoreFrameVisualState()
     RefreshButtonState()
-    f:Show()
-    f:Raise()
-    C_Timer.After(0, function()
-        if #pendingItems > 0 and deleteFrame then
-            deleteFrame:SetAlpha(1)
-            deleteFrame:Show()
-            deleteFrame:Raise()
-        end
-    end)
 end
 
 local function GetTrackedItemState(item)
@@ -336,23 +346,8 @@ local function GetTrackedItemState(item)
 end
 
 local function ShowActiveFrame()
-    local f = EnsureFrame()
-    if GearCoreOptions and GearCoreOptions.Hide then
-        GearCoreOptions.Hide()
-    end
-    f:SetParent(UIParent)
-    f:SetAlpha(1)
-    f:SetFrameStrata("DIALOG")
+    local f = RestoreFrameVisualState()
     RefreshButtonState()
-    f:Show()
-    f:Raise()
-    C_Timer.After(0, function()
-        if #pendingItems > 0 and deleteFrame then
-            deleteFrame:SetAlpha(1)
-            deleteFrame:Show()
-            deleteFrame:Raise()
-        end
-    end)
 end
 
 local function HideProcessingFrame()
