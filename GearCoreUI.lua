@@ -386,6 +386,21 @@ function GearCoreUI.ExecuteDeletion()
     end
 
     local item = pendingItems[1]
+    local frameHiddenForProcessing = false
+
+    local function HideNow()
+        if not frameHiddenForProcessing then
+            HideProcessingFrame()
+            frameHiddenForProcessing = true
+        end
+    end
+
+    local function RestoreNow()
+        if frameHiddenForProcessing then
+            ShowActiveFrame()
+            frameHiddenForProcessing = false
+        end
+    end
 
     if awaitingConfirmation then
         if GetDeletePopupFrame() then
@@ -414,9 +429,12 @@ function GearCoreUI.ExecuteDeletion()
         return
     end
 
+    HideNow()
+
     if equippedLink then
         bag, bagSlot = FindEmptyBagSlot()
         if not bag then
+            RestoreNow()
             print("|cffff4444GearCore:|r Need at least 1 empty bag slot to process the next equipped item.")
             RefreshButtonState()
             return
@@ -425,6 +443,7 @@ function GearCoreUI.ExecuteDeletion()
         ClearCursor()
         PickupInventoryItem(item.slot)
         if not CursorHasItem() then
+            RestoreNow()
             print("|cffff4444GearCore:|r Could not pick up the equipped item. Try clicking again.")
             RefreshButtonState()
             return
@@ -433,17 +452,17 @@ function GearCoreUI.ExecuteDeletion()
         PickupContainerItem(bag, bagSlot)
         if CursorHasItem() then
             ClearCursor()
+            RestoreNow()
             print("|cffff4444GearCore:|r Could not move the equipped item into your bags.")
             RefreshButtonState()
             return
         end
     end
 
-    HideProcessingFrame()
     ClearCursor()
     PickupContainerItem(bag, bagSlot)
     if not CursorHasItem() then
-        ShowActiveFrame()
+        RestoreNow()
         print("|cffff4444GearCore:|r Could not pick up the item from your bag for deletion.")
         RefreshButtonState()
         return
@@ -462,7 +481,7 @@ function GearCoreUI.ExecuteDeletion()
 
     local equippedStillThere, bagStillThere = GetTrackedItemState(item)
     if bagStillThere or equippedStillThere then
-        ShowActiveFrame()
+        RestoreNow()
         print("|cffff4444GearCore:|r The item was not deleted. Try clicking the button again.")
         RefreshButtonState()
         return
