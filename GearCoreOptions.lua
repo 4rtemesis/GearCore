@@ -86,8 +86,10 @@ local function BuildOptionsFrame()
 
     -- Three-step slider (1=Lite, 2=Difficult, 3=Extreme)
     local slider = CreateFrame("Slider", "GearCoreDifficultySlider", f, "OptionsSliderTemplate")
-    slider:SetPoint("TOP", diffHeader, "BOTTOM", 0, -18)
-    slider:SetWidth(290)
+    -- Anchor to the frame center so the Low/High labels don't overflow the sides.
+    -- diffHeader stays as a visual label; slider position is independent.
+    slider:SetPoint("TOP", f, "TOP", 0, -90)
+    slider:SetWidth(300)
     slider:SetMinMaxValues(1, 3)
     slider:SetValueStep(1)
 

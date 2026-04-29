@@ -214,6 +214,20 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
     end
 end)
 
+-- ── Block auto-repair from other addons ──────────────────────────────────────
+-- Disabling the UI buttons only stops clicks; other addons call RepairAllItems()
+-- directly. Wrapping the global function intercepts all callers.
+do
+    local _orig = RepairAllItems
+    RepairAllItems = function(guildBank)
+        if GearCore.GetSetting("blockRepair") then
+            print("|cffff4444GearCore:|r Repair blocked.")
+            return
+        end
+        return _orig(guildBank)
+    end
+end
+
 -- ── Slash commands ────────────────────────────────────────────────────────────
 
 SLASH_GEARCORE1 = "/gearcore"

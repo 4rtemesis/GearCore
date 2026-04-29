@@ -160,18 +160,30 @@ function GearCoreUI.ExecuteDeletion()
     GearCoreUI.ProcessNext()
 end
 
+-- Finds the first empty slot in bags 0-4.
+local function FindEmptyBagSlot()
+    for bag = 0, 4 do
+        for slot = 1, GetContainerNumSlots(bag) do
+            if not GetContainerItemLink(bag, slot) then
+                return bag, slot
+            end
+        end
+    end
+    return nil, nil
+end
+
+-- Deletes items by staging through a bag slot first.
+-- Direct PickupInventoryItem→DeleteCursorItem doesn't reliably delete
+-- equipped items on a dead character; moving to a bag first works.
 function GearCoreUI.ProcessNext()
-    -- Wait while WoW's "type DELETE" confirmation dialog is open
-    if StaticPopup_Visible("DELETE_ITEM") then
+    -- Wait while WoW's "type DELETE" confirmation dialog is open for a rare+ item.
+    if StaticPopup_Visible and StaticPopup_Visible("DELETE_ITEM") then
         C_Timer.After(0.5, GearCoreUI.ProcessNext)
         return
     end
 
     if deleteIndex > #deleteQueue then
-        wipe(pendingItems)
-        wipe(deleteQueue)
-        print("|cffff4444GearCore:|r Deletion complete.")
-        if deleteFrame then deleteFrame:Hide() end
+        GearCoreUI.VerifyAndFinish()
         return
     end
 
@@ -180,9 +192,52 @@ function GearCoreUI.ProcessNext()
 
     ClearCursor()
     PickupInventoryItem(slotId)
-    if CursorHasItem() then
-        DeleteCursorItem()
+
+    if not CursorHasItem() then
+        -- Item already gone from this slot; skip to next.
+        C_Timer.After(0, GearCoreUI.ProcessNext)
+        return
     end
 
-    C_Timer.After(0.2, GearCoreUI.ProcessNext)
+    local bag, bagSlot = FindEmptyBagSlot()
+    if not bag then
+        ClearCursor()
+        deleteIndex = deleteIndex - 1  -- will retry this slot when button is clicked again
+        print("|cffff4444GearCore:|r Need at least 1 empty bag slot. Free up space and click Delete again.")
+        return
+    end
+
+    -- Stage: equipped slot → empty bag slot
+    PickupContainerItem(bag, bagSlot)
+
+    -- Give the client one tick to register the move, then pick up from bag and delete.
+    C_Timer.After(0.2, function()
+        ClearCursor()
+        PickupContainerItem(bag, bagSlot)
+        if CursorHasItem() then
+            DeleteCursorItem()
+        end
+        C_Timer.After(0.2, GearCoreUI.ProcessNext)
+    end)
+end
+
+-- Called after the queue is exhausted. Verifies the equipped slots are actually empty.
+function GearCoreUI.VerifyAndFinish()
+    local failCount = 0
+    for _, item in ipairs(pendingItems) do
+        if GetInventoryItemLink("player", item.slot) then
+            failCount = failCount + 1
+        end
+    end
+
+    wipe(pendingItems)
+    wipe(deleteQueue)
+
+    if failCount > 0 then
+        print("|cffff4444GearCore:|r Warning: " .. failCount .. " item(s) may not have been deleted — check your equipped slots.")
+    else
+        print("|cffff4444GearCore:|r Deletion complete — all marked items removed.")
+    end
+
+    if deleteFrame then deleteFrame:Hide() end
 end
