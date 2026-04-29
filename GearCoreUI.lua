@@ -12,6 +12,7 @@ local processingTicker
 local lastDeleteButtonCenterX
 local lastDeleteButtonCenterY
 local DEBUG = true
+local GetDeletePopupFrame
 
 local function DebugPrint(msg)
     if DEBUG then
@@ -97,6 +98,53 @@ local function EnsureFrame()
     return deleteFrame
 end
 
+local function GetConfirmButtonTargetCenter()
+    local popup = GetDeletePopupFrame and GetDeletePopupFrame() or nil
+    if popup and popup.button1 then
+        local x, y = popup.button1:GetCenter()
+        if x and y then
+            return x, y
+        end
+    end
+
+    local defaultButton = _G["StaticPopup1Button1"]
+    if defaultButton then
+        local x, y = defaultButton:GetCenter()
+        if x and y then
+            return x, y
+        end
+    end
+
+    return nil, nil
+end
+
+local function AlignFrameButtonToConfirmTarget(frame)
+    if not frame or not frame.deleteBtn then
+        return
+    end
+
+    local targetX, targetY = GetConfirmButtonTargetCenter()
+    if not targetX or not targetY then
+        return
+    end
+
+    local btnX, btnY = frame.deleteBtn:GetCenter()
+    if not btnX or not btnY then
+        return
+    end
+
+    local frameX, frameY = frame:GetCenter()
+    if not frameX or not frameY then
+        return
+    end
+
+    local deltaX = targetX - btnX
+    local deltaY = targetY - btnY
+
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", frameX + deltaX, frameY + deltaY)
+end
+
 local function RestoreFrameVisualState()
     local f = EnsureFrame()
     if GearCoreOptions and GearCoreOptions.Hide then
@@ -111,18 +159,18 @@ local function RestoreFrameVisualState()
     f:SetFrameStrata("DIALOG")
     f:Show()
     f:Raise()
+    AlignFrameButtonToConfirmTarget(f)
     DebugPrint("RestoreFrameVisualState immediate: shown=" .. tostring(f:IsShown()) .. " alpha=" .. tostring(f:GetAlpha()))
 
     C_Timer.After(0, function()
         if deleteFrame then
-            deleteFrame:ClearAllPoints()
-            deleteFrame:SetPoint("CENTER")
             deleteFrame:SetParent(UIParent)
             deleteFrame:SetAlpha(1)
             deleteFrame:SetScale(1)
             deleteFrame:SetFrameStrata("DIALOG")
             deleteFrame:Show()
             deleteFrame:Raise()
+            AlignFrameButtonToConfirmTarget(deleteFrame)
             DebugPrint("RestoreFrameVisualState next-frame: shown=" .. tostring(deleteFrame:IsShown()) .. " alpha=" .. tostring(deleteFrame:GetAlpha()))
         end
     end)
@@ -177,7 +225,7 @@ local function RefreshButtonState()
     f.deleteBtn:Enable()
 end
 
-local function GetDeletePopupFrame()
+GetDeletePopupFrame = function()
     if StaticPopup_Visible then
         local popup = StaticPopup_Visible("DELETE_ITEM") or StaticPopup_Visible("DELETE_GOOD_ITEM")
         if type(popup) == "string" then
