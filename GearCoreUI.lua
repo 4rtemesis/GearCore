@@ -95,6 +95,8 @@ local function RestoreFrameVisualState()
         GearCoreOptions.Hide()
     end
 
+    f:ClearAllPoints()
+    f:SetPoint("CENTER")
     f:SetParent(UIParent)
     f:SetAlpha(1)
     f:SetScale(1)
@@ -104,6 +106,8 @@ local function RestoreFrameVisualState()
 
     C_Timer.After(0, function()
         if deleteFrame then
+            deleteFrame:ClearAllPoints()
+            deleteFrame:SetPoint("CENTER")
             deleteFrame:SetParent(UIParent)
             deleteFrame:SetAlpha(1)
             deleteFrame:SetScale(1)
@@ -353,8 +357,10 @@ end
 local function HideProcessingFrame()
     if deleteFrame and deleteFrame.deleteBtn then
         lastDeleteButtonCenterX, lastDeleteButtonCenterY = deleteFrame.deleteBtn:GetCenter()
-        deleteFrame:SetAlpha(0)
-        deleteFrame:Hide()
+        deleteFrame:ClearAllPoints()
+        deleteFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", -2000, -2000)
+        deleteFrame:SetAlpha(1)
+        deleteFrame:Show()
     end
 end
 
