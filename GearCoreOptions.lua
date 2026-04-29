@@ -12,6 +12,9 @@ local DIFF_DESCS  = {
     [3] = "Lose every equipped item on death.",
 }
 
+-- See GearCoreUI.lua for explanation of this pattern.
+local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
+
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
 local function MakeCheckbox(parent, labelText, tooltipText, anchorTo, yOff, settingKey)
@@ -51,7 +54,7 @@ end
 -- ── Frame construction ────────────────────────────────────────────────────────
 
 local function BuildOptionsFrame()
-    local f = CreateFrame("Frame", "GearCoreOptionsFrame", UIParent)
+    local f = CreateFrame("Frame", "GearCoreOptionsFrame", UIParent, backdropTemplate)
     f:SetSize(390, 390)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
@@ -88,9 +91,15 @@ local function BuildOptionsFrame()
     slider:SetMinMaxValues(1, 3)
     slider:SetValueStep(1)
 
-    _G[slider:GetName().."Low"]:SetText("Lite")
-    _G[slider:GetName().."High"]:SetText("Extreme")
-    _G[slider:GetName().."Text"]:SetText(DIFF_LABELS[GearCore.GetSetting("difficulty")])
+    -- OptionsSliderTemplate creates these child globals; guard in case the client
+    -- uses a different template variant where the names don't match.
+    local sliderLow  = _G[slider:GetName().."Low"]
+    local sliderHigh = _G[slider:GetName().."High"]
+    local sliderText = _G[slider:GetName().."Text"]
+    if sliderLow  then sliderLow:SetText("Lite")    end
+    if sliderHigh then sliderHigh:SetText("Extreme") end
+    if sliderText then sliderText:SetText(DIFF_LABELS[GearCore.GetSetting("difficulty")]) end
+    f.sliderText = sliderText  -- save ref for OnShow refresh
 
     local diffDesc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     diffDesc:SetPoint("TOP", slider, "BOTTOM", 0, -10)
@@ -101,7 +110,8 @@ local function BuildOptionsFrame()
     slider:SetScript("OnValueChanged", function(self, value)
         local v = math.floor(value + 0.5)
         GearCore.SetSetting("difficulty", v)
-        _G[self:GetName().."Text"]:SetText(DIFF_LABELS[v])
+        local txt = _G[self:GetName().."Text"]
+        if txt then txt:SetText(DIFF_LABELS[v]) end
         diffDesc:SetText(DIFF_DESCS[v])
     end)
 
@@ -150,7 +160,7 @@ local function BuildOptionsFrame()
     f:SetScript("OnShow", function(self)
         local v = GearCore.GetSetting("difficulty")
         self.diffSlider:SetValue(v)
-        _G[self.diffSlider:GetName().."Text"]:SetText(DIFF_LABELS[v])
+        if self.sliderText then self.sliderText:SetText(DIFF_LABELS[v]) end
         self.diffDesc:SetText(DIFF_DESCS[v])
         self.cbSelfFound:Refresh()
         self.cbRepair:Refresh()

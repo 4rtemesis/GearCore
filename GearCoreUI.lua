@@ -9,10 +9,15 @@ local pendingItems = {}
 local deleteQueue  = {}
 local deleteIndex  = 0
 
+-- On the modern WoW engine (post-Shadowlands, used by all Anniversary clients),
+-- SetBackdrop is only available on frames that inherit BackdropTemplate.
+-- On older engines it is a native Frame method. This covers both cases.
+local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
+
 -- ── Frame construction ────────────────────────────────────────────────────────
 
 local function BuildFrame()
-    local f = CreateFrame("Frame", "GearCoreDeletionFrame", UIParent)
+    local f = CreateFrame("Frame", "GearCoreDeletionFrame", UIParent, backdropTemplate)
     f:SetSize(330, 460)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
@@ -38,7 +43,7 @@ local function BuildFrame()
     sub:SetText("Items marked for deletion:")
 
     -- Scroll area background
-    local scrollBG = CreateFrame("Frame", nil, f)
+    local scrollBG = CreateFrame("Frame", nil, f, backdropTemplate)
     scrollBG:SetPoint("TOPLEFT",  f, "TOPLEFT",   16, -68)
     scrollBG:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -36, 78)
     scrollBG:SetBackdrop({
