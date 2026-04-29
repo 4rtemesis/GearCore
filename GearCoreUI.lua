@@ -462,6 +462,51 @@ local function BeginCursorMonitor()
     end)
 end
 
+local function BeginArmMonitor()
+    local item = pendingItems[1]
+    if not item then
+        FinishQueue()
+        return
+    end
+
+    StopProcessingTicker()
+    DebugPrint("BeginArmMonitor for " .. tostring(item.link or item.name))
+
+    processingTicker = C_Timer.NewTicker(0.1, function()
+        local equippedLink, bag = GetTrackedItemState(item)
+
+        if CursorHasItem() then
+            StopProcessingTicker()
+            cursorArmed = true
+            awaitingConfirmation = false
+            ShowActiveFrame()
+            RefreshButtonState()
+            DebugPrint("Arm monitor: cursor now holds item")
+            BeginCursorMonitor()
+            return
+        end
+
+        if not equippedLink and not bag then
+            StopProcessingTicker()
+            cursorArmed = false
+            awaitingConfirmation = false
+            ShowActiveFrame()
+            DebugPrint("Arm monitor: item disappeared before arm finished")
+            RemoveFirstPendingItem()
+            FinishQueue()
+            return
+        end
+
+        StopProcessingTicker()
+        cursorArmed = false
+        awaitingConfirmation = false
+        ShowActiveFrame()
+        RefreshButtonState()
+        DebugPrint("Arm monitor: cursor did not retain item")
+        print("|cffff4444GearCore:|r Item was not held on the cursor. Click again to retry.")
+    end)
+end
+
 function GearCoreUI.ExecuteDeletion()
     if UnitIsDeadOrGhost("player") then
         print("|cffff4444GearCore:|r You must resurrect before deleting queued items.")
@@ -570,20 +615,9 @@ function GearCoreUI.ExecuteDeletion()
     end
 
     ClearCursor()
+    BeginArmMonitor()
     PickupContainerItem(bag, bagSlot)
-    if not CursorHasItem() then
-        RestoreNow()
-        print("|cffff4444GearCore:|r Could not pick up the item from your bag for deletion.")
-        RefreshButtonState()
-        return
-    end
-
-    cursorArmed = true
-    awaitingConfirmation = false
-    RestoreNow()
-    RefreshButtonState()
-    DebugPrint("ExecuteDeletion first click: item picked up, waiting for destroy click")
-    BeginCursorMonitor()
+    DebugPrint("ExecuteDeletion first click: attempted bag pickup for arming")
 end
 
 -- Returns how many items are currently queued (DB + in-memory).
