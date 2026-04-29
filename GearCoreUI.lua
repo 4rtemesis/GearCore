@@ -75,8 +75,8 @@ local function BuildFrame()
     btn:SetScript("OnClick", GearCoreUI.ExecuteDeletion)
     f.deleteBtn = btn
 
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    -- No close button — the deletion window must not be dismissable.
+    -- Use the recovery button in /gearcore options if the window needs to be reopened.
 
     f:Hide()
     return f
@@ -266,6 +266,26 @@ function GearCoreUI.ProcessNext()
         end
         C_Timer.After(0.25, GearCoreUI.ProcessNext)
     end)
+end
+
+-- Returns how many items are currently queued (DB + in-memory).
+function GearCoreUI.GetPendingCount()
+    if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
+        return #GearCoreDB.pendingDeletion
+    end
+    return #pendingItems
+end
+
+-- Called from the options panel recovery button. Re-shows the deletion window
+-- using whichever source has data (DB takes priority; falls back to in-memory).
+function GearCoreUI.ReopenDeletionFrame()
+    local source = (GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0)
+                   and GearCoreDB.pendingDeletion or pendingItems
+    if #source == 0 then
+        print("|cffff4444GearCore:|r No pending death penalty items.")
+        return
+    end
+    GearCoreUI.ShowDeletionFrame(source)
 end
 
 function GearCoreUI.VerifyAndFinish()

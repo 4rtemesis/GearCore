@@ -55,7 +55,7 @@ end
 
 local function BuildOptionsFrame()
     local f = CreateFrame("Frame", "GearCoreOptionsFrame", UIParent, backdropTemplate)
-    f:SetSize(390, 390)
+    f:SetSize(390, 455)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetMovable(true)
@@ -154,6 +154,17 @@ local function BuildOptionsFrame()
     wpnNote:SetTextColor(0.7, 0.7, 0.7)
     wpnNote:SetText("Applies to the Lite, Difficult, and Extreme modes.")
 
+    -- ── Death penalty recovery ────────────────────────────────────────────────
+    local queueHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    queueHeader:SetPoint("TOPLEFT", wpnNote, "BOTTOMLEFT", -30, -22)
+    queueHeader:SetText("Death Penalty Queue")
+
+    local queueBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    queueBtn:SetSize(300, 28)
+    queueBtn:SetPoint("TOPLEFT", queueHeader, "BOTTOMLEFT", 2, -8)
+    queueBtn:SetScript("OnClick", function() GearCoreUI.ReopenDeletionFrame() end)
+    f.queueBtn = queueBtn
+
     -- Store refs for Refresh
     f.cbSelfFound = cbSelfFound
     f.cbRepair    = cbRepair
@@ -167,6 +178,15 @@ local function BuildOptionsFrame()
         self.cbSelfFound:Refresh()
         self.cbRepair:Refresh()
         self.cbWeapon:Refresh()
+
+        local count = GearCoreUI.GetPendingCount()
+        if count > 0 then
+            self.queueBtn:SetText("Show Pending Deletions  (" .. count .. " items)")
+            self.queueBtn:Enable()
+        else
+            self.queueBtn:SetText("No Pending Deletions")
+            self.queueBtn:Disable()
+        end
     end)
 
     f:Hide()
