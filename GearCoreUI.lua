@@ -214,11 +214,29 @@ local function ResolveProcessingState()
         return
     end
 
-    cursorArmed = false
-    awaitingConfirmation = false
-    RefreshButtonState()
-    DebugPrint("ResolveProcessingState: item still present, restoring queue")
-    print("|cffff4444GearCore:|r Item was not deleted. Click again to retry.")
+    C_Timer.After(0.2, function()
+        if not pendingItems[1] or pendingItems[1] ~= item then
+            return
+        end
+
+        local equippedRetry, bagRetry = GetTrackedItemState(item)
+        DebugPrint("ResolveProcessingState retry: equipped=" .. tostring(equippedRetry) .. " bag=" .. tostring(bagRetry))
+
+        if not equippedRetry and not bagRetry then
+            cursorArmed = false
+            awaitingConfirmation = false
+            DebugPrint("ResolveProcessingState retry: item gone, advancing queue")
+            RemoveFirstPendingItem()
+            FinishQueue()
+            return
+        end
+
+        cursorArmed = false
+        awaitingConfirmation = false
+        RefreshButtonState()
+        DebugPrint("ResolveProcessingState retry: item still present, restoring queue")
+        print("|cffff4444GearCore:|r Item was not deleted. Click again to retry.")
+    end)
 end
 
 local function PositionDeletePopup()
