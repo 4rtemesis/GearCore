@@ -162,7 +162,10 @@ local function BuildOptionsFrame()
     local queueBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     queueBtn:SetSize(300, 28)
     queueBtn:SetPoint("TOPLEFT", queueHeader, "BOTTOMLEFT", 2, -8)
-    queueBtn:SetScript("OnClick", function() GearCoreUI.ReopenDeletionFrame() end)
+    queueBtn:SetScript("OnClick", function()
+        f:Hide()
+        GearCoreUI.ReopenDeletionFrame()
+    end)
     f.queueBtn = queueBtn
 
     -- Store refs for Refresh
@@ -201,5 +204,11 @@ function GearCoreOptions.Toggle()
         optFrame:Hide()
     else
         optFrame:Show()
+    end
+end
+
+function GearCoreOptions.Hide()
+    if optFrame and optFrame:IsShown() then
+        optFrame:Hide()
     end
 end
