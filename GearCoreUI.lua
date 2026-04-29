@@ -10,6 +10,13 @@ local awaitingConfirmation = false
 local processingTicker
 local lastDeleteButtonCenterX
 local lastDeleteButtonCenterY
+local DEBUG = true
+
+local function DebugPrint(msg)
+    if DEBUG then
+        print("|cff66ccffGearCore debug:|r " .. msg)
+    end
+end
 
 -- On the modern WoW engine (post-Shadowlands, used by all Anniversary clients),
 -- SetBackdrop is only available on frames that inherit BackdropTemplate.
@@ -103,6 +110,7 @@ local function RestoreFrameVisualState()
     f:SetFrameStrata("DIALOG")
     f:Show()
     f:Raise()
+    DebugPrint("RestoreFrameVisualState immediate: shown=" .. tostring(f:IsShown()) .. " alpha=" .. tostring(f:GetAlpha()))
 
     C_Timer.After(0, function()
         if deleteFrame then
@@ -114,6 +122,7 @@ local function RestoreFrameVisualState()
             deleteFrame:SetFrameStrata("DIALOG")
             deleteFrame:Show()
             deleteFrame:Raise()
+            DebugPrint("RestoreFrameVisualState next-frame: shown=" .. tostring(deleteFrame:IsShown()) .. " alpha=" .. tostring(deleteFrame:GetAlpha()))
         end
     end)
 
@@ -361,6 +370,7 @@ local function HideProcessingFrame()
         deleteFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", -2000, -2000)
         deleteFrame:SetAlpha(1)
         deleteFrame:Show()
+        DebugPrint("HideProcessingFrame parked off-screen")
     end
 end
 
@@ -373,30 +383,39 @@ local function BeginProcessingMonitor()
 
     StopProcessingTicker()
     HideProcessingFrame()
+    DebugPrint("BeginProcessingMonitor for " .. tostring(item.link or item.name))
 
     processingTicker = C_Timer.NewTicker(0.1, function()
         local popup = GetDeletePopupFrame()
         if popup then
             awaitingConfirmation = true
             PositionDeletePopup()
+            DebugPrint("Ticker: popup active")
             return
         end
 
-        local equippedLink, bag = GetTrackedItemState(item)
         if CursorHasItem() then
+            DebugPrint("Ticker: cursor still has item")
             return
         end
+
+        StopProcessingTicker()
+        ShowActiveFrame()
+        DebugPrint("Ticker: cursor clear, frame restore attempted")
+
+        local equippedLink, bag = GetTrackedItemState(item)
+        DebugPrint("Ticker state after restore: equipped=" .. tostring(equippedLink) .. " bag=" .. tostring(bag))
 
         if not equippedLink and not bag then
             awaitingConfirmation = false
+            DebugPrint("Ticker: item appears deleted, advancing queue")
             RemoveFirstPendingItem()
             FinishQueue()
             return
         end
 
         awaitingConfirmation = false
-        StopProcessingTicker()
-        ShowActiveFrame()
+        DebugPrint("Ticker: item still present, waiting for retry")
         print("|cffff4444GearCore:|r That item is still present. Click again to retry this one.")
     end)
 end
@@ -501,6 +520,7 @@ function GearCoreUI.ExecuteDeletion()
     if awaitingConfirmation then
         PositionDeletePopup()
     end
+    DebugPrint("ExecuteDeletion: DeleteCursorItem called, awaitingConfirmation=" .. tostring(awaitingConfirmation) .. " cursorHasItem=" .. tostring(CursorHasItem()))
     BeginProcessingMonitor()
 end
 
