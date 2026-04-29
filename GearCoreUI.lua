@@ -44,10 +44,22 @@ local function BuildFrame()
     sub:SetPoint("TOP", title, "BOTTOM", 0, -6)
     sub:SetText("Items marked for deletion:")
 
+    local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    btn:SetSize(210, 30)
+    btn:SetPoint("TOP", sub, "BOTTOM", 0, -10)
+    btn:SetText("DELETE MARKED ITEMS")
+    btn:SetScript("OnClick", GearCoreUI.ExecuteDeletion)
+    f.deleteBtn = btn
+
+    local warn = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    warn:SetPoint("TOP", btn, "BOTTOM", 0, -8)
+    warn:SetTextColor(1, 0.3, 0.3)
+    warn:SetText("The window will step aside while each item is being processed.")
+
     -- Scroll area background
     local scrollBG = CreateFrame("Frame", nil, f, backdropTemplate)
-    scrollBG:SetPoint("TOPLEFT",  f, "TOPLEFT",   16, -68)
-    scrollBG:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -36, 78)
+    scrollBG:SetPoint("TOPLEFT",  f, "TOPLEFT",   16, -128)
+    scrollBG:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -36, 16)
     scrollBG:SetBackdrop({
         bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
         tile = true, tileSize = 16,
@@ -64,18 +76,6 @@ local function BuildFrame()
     sf:SetScrollChild(sc)
     f.scrollChild = sc
     f.itemRows    = {}
-
-    local warn = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    warn:SetPoint("BOTTOM", f, "BOTTOM", 0, 52)
-    warn:SetTextColor(1, 0.3, 0.3)
-    warn:SetText("The window will step aside while each item is being processed.")
-
-    local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    btn:SetSize(210, 30)
-    btn:SetPoint("BOTTOM", f, "BOTTOM", 0, 16)
-    btn:SetText("DELETE MARKED ITEMS")
-    btn:SetScript("OnClick", GearCoreUI.ExecuteDeletion)
-    f.deleteBtn = btn
 
     -- No close button — the deletion window must not be dismissable.
     -- Use the recovery button in /gearcore options if the window needs to be reopened.
@@ -324,14 +324,28 @@ end
 
 local function ShowActiveFrame()
     local f = EnsureFrame()
+    if GearCoreOptions and GearCoreOptions.Hide then
+        GearCoreOptions.Hide()
+    end
+    f:SetParent(UIParent)
+    f:SetAlpha(1)
+    f:SetFrameStrata("DIALOG")
     RefreshButtonState()
     f:Show()
     f:Raise()
+    C_Timer.After(0, function()
+        if #pendingItems > 0 and deleteFrame then
+            deleteFrame:SetAlpha(1)
+            deleteFrame:Show()
+            deleteFrame:Raise()
+        end
+    end)
 end
 
 local function HideProcessingFrame()
     if deleteFrame and deleteFrame.deleteBtn then
         lastDeleteButtonCenterX, lastDeleteButtonCenterY = deleteFrame.deleteBtn:GetCenter()
+        deleteFrame:SetAlpha(0)
         deleteFrame:Hide()
     end
 end
