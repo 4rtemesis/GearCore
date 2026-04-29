@@ -131,18 +131,65 @@ local function PopulateList(items)
     sc:SetHeight(math.max(y + 4, 1))
 end
 
+-- ── Container API wrappers ────────────────────────────────────────────────────
+-- PickupContainerItem and friends were moved to C_Container on the modern engine.
+-- The old globals still exist as aliases on most clients, but C_Container is safer.
+
+local function BagGetNumSlots(bag)
+    if C_Container then return C_Container.GetContainerNumSlots(bag) end
+    return GetContainerNumSlots(bag)
+end
+
+local function BagGetItemLink(bag, slot)
+    if C_Container then return C_Container.GetContainerItemLink(bag, slot) end
+    return GetContainerItemLink(bag, slot)
+end
+
+local function BagPickup(bag, slot)
+    if C_Container then C_Container.PickupContainerItem(bag, slot)
+    else PickupContainerItem(bag, slot) end
+end
+
+local function FindEmptyBagSlot()
+    for bag = 0, 4 do
+        for slot = 1, BagGetNumSlots(bag) do
+            if not BagGetItemLink(bag, slot) then
+                return bag, slot
+            end
+        end
+    end
+    return nil, nil
+end
+
 -- ── Public API ────────────────────────────────────────────────────────────────
 
+-- Shows the doom window. While dead the button is locked — deletion fires
+-- automatically on resurrection via GearCore's PLAYER_ALIVE handler.
 function GearCoreUI.ShowDeletionFrame(items)
     wipe(pendingItems)
     for _, item in ipairs(items) do pendingItems[#pendingItems+1] = item end
     PopulateList(pendingItems)
     local f = EnsureFrame()
+
+    if UnitIsDeadOrGhost("player") then
+        f.deleteBtn:SetText("Will be deleted on resurrection")
+        f.deleteBtn:Disable()
+    else
+        f.deleteBtn:SetText("DELETE MARKED ITEMS")
+        f.deleteBtn:Enable()
+    end
+
     f:Show()
     f:Raise()
 end
 
+-- Called by the button (alive path) or by TriggerDeletion (auto-resurrection path).
 function GearCoreUI.ExecuteDeletion()
+    if UnitIsDeadOrGhost("player") then
+        print("|cffff4444GearCore:|r You are dead. Items will be deleted automatically when you resurrect.")
+        return
+    end
+
     wipe(deleteQueue)
     for _, item in ipairs(pendingItems) do
         if GetInventoryItemLink("player", item.slot) then
@@ -160,23 +207,20 @@ function GearCoreUI.ExecuteDeletion()
     GearCoreUI.ProcessNext()
 end
 
--- Finds the first empty slot in bags 0-4.
-local function FindEmptyBagSlot()
-    for bag = 0, 4 do
-        for slot = 1, GetContainerNumSlots(bag) do
-            if not GetContainerItemLink(bag, slot) then
-                return bag, slot
-            end
-        end
-    end
-    return nil, nil
+-- Called by GearCore on PLAYER_ALIVE with the persisted pending-deletion list.
+function GearCoreUI.TriggerDeletion(items)
+    -- Repopulate and show the window so the player can see what's being deleted.
+    GearCoreUI.ShowDeletionFrame(items)
+    -- Small delay so the resurrection animation settles before we touch inventory.
+    C_Timer.After(0.5, GearCoreUI.ExecuteDeletion)
 end
 
--- Deletes items by staging through a bag slot first.
--- Direct PickupInventoryItem→DeleteCursorItem doesn't reliably delete
--- equipped items on a dead character; moving to a bag first works.
+-- ── Deletion sequence ─────────────────────────────────────────────────────────
+-- Items are moved to a bag slot first, then deleted from the bag.
+-- This is necessary because equipped items cannot be deleted directly on some clients.
+
 function GearCoreUI.ProcessNext()
-    -- Wait while WoW's "type DELETE" confirmation dialog is open for a rare+ item.
+    -- Pause if WoW's "type DELETE to confirm" dialog is open (rare+ items).
     if StaticPopup_Visible and StaticPopup_Visible("DELETE_ITEM") then
         C_Timer.After(0.5, GearCoreUI.ProcessNext)
         return
@@ -194,7 +238,6 @@ function GearCoreUI.ProcessNext()
     PickupInventoryItem(slotId)
 
     if not CursorHasItem() then
-        -- Item already gone from this slot; skip to next.
         C_Timer.After(0, GearCoreUI.ProcessNext)
         return
     end
@@ -202,26 +245,29 @@ function GearCoreUI.ProcessNext()
     local bag, bagSlot = FindEmptyBagSlot()
     if not bag then
         ClearCursor()
-        deleteIndex = deleteIndex - 1  -- will retry this slot when button is clicked again
+        deleteIndex = deleteIndex - 1
         print("|cffff4444GearCore:|r Need at least 1 empty bag slot. Free up space and click Delete again.")
+        if deleteFrame then
+            deleteFrame.deleteBtn:SetText("DELETE MARKED ITEMS")
+            deleteFrame.deleteBtn:Enable()
+        end
         return
     end
 
-    -- Stage: equipped slot → empty bag slot
-    PickupContainerItem(bag, bagSlot)
+    -- Move: equipped slot → bag slot
+    BagPickup(bag, bagSlot)
 
-    -- Give the client one tick to register the move, then pick up from bag and delete.
-    C_Timer.After(0.2, function()
+    -- One tick for the client to register the move, then pick up from bag and delete.
+    C_Timer.After(0.25, function()
         ClearCursor()
-        PickupContainerItem(bag, bagSlot)
+        BagPickup(bag, bagSlot)
         if CursorHasItem() then
             DeleteCursorItem()
         end
-        C_Timer.After(0.2, GearCoreUI.ProcessNext)
+        C_Timer.After(0.25, GearCoreUI.ProcessNext)
     end)
 end
 
--- Called after the queue is exhausted. Verifies the equipped slots are actually empty.
 function GearCoreUI.VerifyAndFinish()
     local failCount = 0
     for _, item in ipairs(pendingItems) do

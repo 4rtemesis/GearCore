@@ -119,7 +119,6 @@ local function BuildMarkedItems(source)
 end
 
 local function OnPlayerDead()
-    -- Fall back to current equipment if we died outside of combat (fall, etc.)
     local source = (#combatSnapshot > 0) and combatSnapshot or nil
     if not source then
         TakeSnapshot()
@@ -129,6 +128,13 @@ local function OnPlayerDead()
     BuildMarkedItems(source)
 
     if #markedItems > 0 then
+        -- Persist to SavedVariables so a logout-while-dead can't dodge the penalty.
+        GearCoreDB.pendingDeletion = {}
+        for _, item in ipairs(markedItems) do
+            GearCoreDB.pendingDeletion[#GearCoreDB.pendingDeletion+1] = {
+                slot = item.slot, link = item.link, name = item.name,
+            }
+        end
         GearCoreUI.ShowDeletionFrame(markedItems)
     else
         print("|cffff4444GearCore:|r No items marked for deletion.")
@@ -168,6 +174,22 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         if (...) == "GearCore" then
             InitSettings()
             print("|cffff4444GearCore|r loaded. |cffffd700/gearcore|r for options.")
+
+            -- Handle pending deletions from a previous session (player logged out while dead).
+            if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
+                if UnitIsDeadOrGhost("player") then
+                    -- Still dead: show the window, wait for PLAYER_ALIVE to fire.
+                    GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
+                else
+                    -- Logged in alive (soulstone, rez'd before logout, etc.).
+                    local items = GearCoreDB.pendingDeletion
+                    GearCoreDB.pendingDeletion = nil
+                    print("|cffff4444GearCore:|r Pending death penalty detected — applying...")
+                    C_Timer.After(3, function()
+                        GearCoreUI.TriggerDeletion(items)
+                    end)
+                end
+            end
         end
 
     elseif event == "PLAYER_REGEN_DISABLED" then
@@ -187,6 +209,16 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         isDead = false
         wipe(combatSnapshot)
         wipe(markedItems)
+
+        -- Execute the death penalty now that the player is alive and can move items.
+        if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
+            local items = GearCoreDB.pendingDeletion
+            GearCoreDB.pendingDeletion = nil
+            print("|cffff4444GearCore:|r Resurrection detected — applying death penalty...")
+            C_Timer.After(1, function()
+                GearCoreUI.TriggerDeletion(items)
+            end)
+        end
 
     elseif event == "MAIL_SHOW" then
         if GearCore.GetSetting("selfFound") then
