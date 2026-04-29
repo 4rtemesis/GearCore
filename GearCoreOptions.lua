@@ -15,6 +15,19 @@ local DIFF_DESCS  = {
 -- See GearCoreUI.lua for explanation of this pattern.
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
 
+local function ApplyDifficultyValue(slider, diffDesc, value)
+    local v = math.max(1, math.min(3, math.floor(value + 0.5)))
+    if math.abs((slider:GetValue() or v) - v) > 0.001 then
+        slider:SetValue(v)
+        return
+    end
+
+    GearCore.SetSetting("difficulty", v)
+    local txt = _G[slider:GetName().."Text"]
+    if txt then txt:SetText(DIFF_LABELS[v]) end
+    diffDesc:SetText(DIFF_DESCS[v])
+end
+
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
 local function MakeCheckbox(parent, labelText, tooltipText, anchorTo, yOff, settingKey)
@@ -93,6 +106,19 @@ local function BuildOptionsFrame()
     slider:SetMinMaxValues(1, 3)
     slider:SetValueStep(1)
 
+    local sliderTrack = CreateFrame("Frame", nil, f, backdropTemplate)
+    sliderTrack:SetSize(236, 8)
+    sliderTrack:SetPoint("CENTER", slider, "CENTER", 0, -1)
+    sliderTrack:SetFrameLevel(slider:GetFrameLevel() - 1)
+    sliderTrack:SetBackdrop({
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 10,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    sliderTrack:SetBackdropColor(0.08, 0.08, 0.08, 0.9)
+    sliderTrack:SetBackdropBorderColor(0.72, 0.58, 0.18, 0.95)
+
     -- OptionsSliderTemplate creates these child globals; guard in case the client
     -- uses a different template variant where the names don't match.
     local sliderLow  = _G[slider:GetName().."Low"]
@@ -108,14 +134,13 @@ local function BuildOptionsFrame()
     diffDesc:SetTextColor(1, 0.82, 0)
     diffDesc:SetText(DIFF_DESCS[GearCore.GetSetting("difficulty")])
 
-    slider:SetValue(GearCore.GetSetting("difficulty"))
     slider:SetScript("OnValueChanged", function(self, value)
-        local v = math.floor(value + 0.5)
-        GearCore.SetSetting("difficulty", v)
-        local txt = _G[self:GetName().."Text"]
-        if txt then txt:SetText(DIFF_LABELS[v]) end
-        diffDesc:SetText(DIFF_DESCS[v])
+        ApplyDifficultyValue(self, diffDesc, value)
     end)
+    slider:SetScript("OnMouseUp", function(self)
+        ApplyDifficultyValue(self, diffDesc, self:GetValue())
+    end)
+    slider:SetValue(GearCore.GetSetting("difficulty"))
 
     f.diffSlider = slider
     f.diffDesc   = diffDesc
@@ -161,7 +186,7 @@ local function BuildOptionsFrame()
 
     local queueBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     queueBtn:SetSize(300, 28)
-    queueBtn:SetPoint("TOPLEFT", queueHeader, "BOTTOMLEFT", 2, -8)
+    queueBtn:SetPoint("TOP", queueHeader, "BOTTOM", 0, -8)
     queueBtn:SetScript("OnClick", function()
         f:Hide()
         GearCoreUI.ReopenDeletionFrame()

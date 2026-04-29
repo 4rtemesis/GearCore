@@ -581,18 +581,35 @@ local function BeginMoveMonitor()
             return
         end
 
-        if equippedLink then
+        C_Timer.After(0.2, function()
+            if not pendingItems[1] or pendingItems[1] ~= item then
+                return
+            end
+
+            local equippedRetry, bagRetry = GetTrackedItemState(item)
+            DebugPrint("Move monitor retry: equipped=" .. tostring(equippedRetry) .. " bag=" .. tostring(bagRetry))
+
+            if bagRetry then
+                awaitingConfirmation = false
+                cursorArmed = false
+                RefreshButtonState()
+                print("|cffff4444GearCore:|r Item moved to bag. Click Delete Next Item again to pick it up.")
+                return
+            end
+
+            if equippedRetry then
+                awaitingConfirmation = false
+                cursorArmed = false
+                RefreshButtonState()
+                print("|cffff4444GearCore:|r Item was returned to its equipment slot. Click again to retry.")
+                return
+            end
+
             awaitingConfirmation = false
             cursorArmed = false
             RefreshButtonState()
-            print("|cffff4444GearCore:|r Item was returned to its equipment slot. Click again to retry.")
-            return
-        end
-
-        awaitingConfirmation = false
-        cursorArmed = false
-        RefreshButtonState()
-        print("|cffff4444GearCore:|r Item could not be prepared for deletion. Click again to retry.")
+            print("|cffff4444GearCore:|r Item could not be prepared for deletion. Click again to retry.")
+        end)
     end)
 end
 
