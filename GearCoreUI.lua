@@ -497,26 +497,11 @@ function GearCoreUI.ExecuteDeletion()
     end
 
     DeleteCursorItem()
-
-    if GetDeletePopupFrame() or CursorHasItem() then
-        awaitingConfirmation = GetDeletePopupFrame() and true or false
-        if awaitingConfirmation then
-            PositionDeletePopup()
-        end
-        BeginProcessingMonitor()
-        return
+    awaitingConfirmation = GetDeletePopupFrame() and true or false
+    if awaitingConfirmation then
+        PositionDeletePopup()
     end
-
-    local equippedStillThere, bagStillThere = GetTrackedItemState(item)
-    if bagStillThere or equippedStillThere then
-        RestoreNow()
-        print("|cffff4444GearCore:|r The item was not deleted. Try clicking the button again.")
-        RefreshButtonState()
-        return
-    end
-
-    RemoveFirstPendingItem()
-    FinishQueue()
+    BeginProcessingMonitor()
 end
 
 -- Returns how many items are currently queued (DB + in-memory).
