@@ -23,9 +23,10 @@ local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
 -- ── Frame construction ────────────────────────────────────────────────────────
 
 local function BuildFrame()
+    -- Item list frame (compact, no button)
     local f = CreateFrame("Frame", "GearCoreDeletionFrame", UIParent, backdropTemplate)
-    f:SetSize(330, 460)
-    f:SetPoint("CENTER")
+    f:SetSize(350, 300)
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
     f:SetFrameStrata("DIALOG")
     f:SetMovable(true)
     f:EnableMouse(true)
@@ -48,24 +49,10 @@ local function BuildFrame()
     sub:SetPoint("TOP", title, "BOTTOM", 0, -6)
     sub:SetText("Items marked for deletion:")
 
-    local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    btn:SetSize(210, 30)
-    btn:SetPoint("TOP", sub, "BOTTOM", 0, -10)
-    btn:SetText("DELETE MARKED ITEMS")
-    btn:SetScript("OnClick", GearCoreUI.ExecuteDeletion)
-    f.deleteBtn = btn
-
-    local warn = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    warn:SetPoint("TOP", btn, "BOTTOM", 0, -8)
-    warn:SetWidth(270)
-    warn:SetJustifyH("CENTER")
-    warn:SetTextColor(1, 0.3, 0.3)
-    warn:SetText("The window will step aside while each item is being processed.")
-
     -- Scroll area background
     local scrollBG = CreateFrame("Frame", nil, f, backdropTemplate)
-    scrollBG:SetPoint("TOPLEFT",  f, "TOPLEFT",   16, -128)
-    scrollBG:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -36, 16)
+    scrollBG:SetPoint("TOPLEFT",  f, "TOPLEFT",   16, -50)
+    scrollBG:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 16)
     scrollBG:SetBackdrop({
         bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
         tile = true, tileSize = 16,
@@ -82,6 +69,16 @@ local function BuildFrame()
     sf:SetScrollChild(sc)
     f.scrollChild = sc
     f.itemRows    = {}
+
+    -- Separate delete button (positioned independently at confirm button location)
+    local btn = CreateFrame("Button", "GearCoreDeletionButton", UIParent, "UIPanelButtonTemplate")
+    btn:SetSize(140, 32)
+    btn:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    btn:SetFrameStrata("TOOLTIP")
+    btn:SetText("DELETE")
+    btn:SetScript("OnClick", GearCoreUI.ExecuteDeletion)
+    f.deleteBtn = btn
+    btn:Hide()
 
     -- No close button — the deletion window must not be dismissable.
     -- Use the recovery button in /gearcore options if the window needs to be reopened.
@@ -176,24 +173,45 @@ local function RestoreFrameVisualState()
     end
 
     f:ClearAllPoints()
-    f:SetPoint("CENTER")
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
     f:SetParent(UIParent)
     f:SetAlpha(1)
     f:SetScale(1)
     f:SetFrameStrata("DIALOG")
     f:Show()
     f:Raise()
-    AlignFrameButtonToConfirmTarget(f)
+
+    -- Position delete button at where confirm button will be
+    if f.deleteBtn then
+        local targetX, targetY = GetConfirmButtonTargetCenter()
+        if targetX and targetY then
+            f.deleteBtn:ClearAllPoints()
+            f.deleteBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
+        else
+            f.deleteBtn:ClearAllPoints()
+            f.deleteBtn:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
+        end
+        f.deleteBtn:Show()
+    end
 
     C_Timer.After(0, function()
-        if deleteFrame then
+        if deleteFrame and deleteFrame.deleteBtn then
             deleteFrame:SetParent(UIParent)
             deleteFrame:SetAlpha(1)
             deleteFrame:SetScale(1)
             deleteFrame:SetFrameStrata("DIALOG")
             deleteFrame:Show()
             deleteFrame:Raise()
-            AlignFrameButtonToConfirmTarget(deleteFrame)
+            
+            local targetX, targetY = GetConfirmButtonTargetCenter()
+            if targetX and targetY then
+                deleteFrame.deleteBtn:ClearAllPoints()
+                deleteFrame.deleteBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
+            else
+                deleteFrame.deleteBtn:ClearAllPoints()
+                deleteFrame.deleteBtn:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
+            end
+            deleteFrame.deleteBtn:Show()
         end
     end)
 
@@ -226,25 +244,51 @@ local function RefreshButtonState()
     local f = EnsureFrame()
 
     if UnitIsDeadOrGhost("player") then
-        f.deleteBtn:SetText("Will unlock after resurrection")
+        f.deleteBtn:SetText("Resurrect First")
         f.deleteBtn:Disable()
+        f.deleteBtn:Hide()
         return
     end
 
     if #pendingItems == 0 then
-        f.deleteBtn:SetText("No pending items")
+        f.deleteBtn:SetText("No Items")
         f.deleteBtn:Disable()
+        f.deleteBtn:Hide()
         return
     end
 
     if awaitingConfirmation then
-        f.deleteBtn:SetText("Continue After DELETE Prompt")
+        f.deleteBtn:SetText("CONFIRM")
     elseif cursorArmed and CursorHasItem() then
-        f.deleteBtn:SetText("DESTROY HELD ITEM")
+        f.deleteBtn:SetText("DESTROY")
     else
-        f.deleteBtn:SetText("DELETE NEXT ITEM (" .. #pendingItems .. " LEFT)")
+        f.deleteBtn:SetText("DELETE")
     end
     f.deleteBtn:Enable()
+    f.deleteBtn:Show()
+end
+
+local function ShowTransitionNotification()
+    local f = EnsureFrame()
+    if not f.transitionLabel then
+        f.transitionLabel = f:CreateFontString(nil, "OVERLAY", "GameFontGreenSmall")
+        f.transitionLabel:SetPoint("TOP", f.deleteBtn, "BOTTOM", 0, -4)
+    end
+    
+    f.transitionLabel:SetText("✓ Next item selected...")
+    f.transitionLabel:Show()
+    
+    if f.transitionTicker then
+        f.transitionTicker:Cancel()
+    end
+    f.transitionTicker = C_Timer.NewTicker(0.1, function()
+        f.transitionLabel:SetAlpha((f.transitionLabel:GetAlpha() or 1) - 0.15)
+        if f.transitionLabel:GetAlpha() <= 0 then
+            f.transitionLabel:Hide()
+            f.transitionTicker:Cancel()
+            f.transitionTicker = nil
+        end
+    end, 7)
 end
 
 GetDeletePopupFrame = function()
@@ -472,6 +516,24 @@ local function RemoveFirstPendingItem()
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
     RefreshButtonState()
+    
+    -- Auto-trigger next item deletion if items remain
+    if #pendingItems > 0 then
+        ShowTransitionNotification()
+        -- Update button position for next item
+        if deleteFrame and deleteFrame.deleteBtn then
+            local targetX, targetY = GetConfirmButtonTargetCenter()
+            if targetX and targetY then
+                deleteFrame.deleteBtn:ClearAllPoints()
+                deleteFrame.deleteBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
+            end
+        end
+        C_Timer.After(0.5, function()
+            if #pendingItems > 0 then
+                GearCoreUI.ExecuteDeletion()
+            end
+        end)
+    end
 end
 
 local function FinishQueue()
@@ -510,8 +572,9 @@ end
 local function HideProcessingFrame()
     if deleteFrame and deleteFrame.deleteBtn then
         lastDeleteButtonCenterX, lastDeleteButtonCenterY = deleteFrame.deleteBtn:GetCenter()
+        deleteFrame.deleteBtn:Hide()
         deleteFrame:ClearAllPoints()
-        deleteFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", -2000, -2000)
+        deleteFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
         deleteFrame:SetAlpha(1)
         deleteFrame:Show()
     end

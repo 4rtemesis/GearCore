@@ -3,6 +3,7 @@
 ## Notes: Hardcore gear loss on death for WoW Classic
 ## Author: GearCore
 ## Version: 1.0
+## Icon: GCicon.png
 ## SavedVariables: GearCoreDB
 
 GearCore.lua
