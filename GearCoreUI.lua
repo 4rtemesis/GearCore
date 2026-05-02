@@ -328,7 +328,6 @@ local function ResolveProcessingState()
         cursorArmed = false
         awaitingConfirmation = false
         RemoveFirstPendingItem()
-        FinishQueue()
         return
     end
 
@@ -343,7 +342,6 @@ local function ResolveProcessingState()
             cursorArmed = false
             awaitingConfirmation = false
             RemoveFirstPendingItem()
-            FinishQueue()
             return
         end
 
@@ -521,12 +519,10 @@ local function RemoveFirstPendingItem()
     table.remove(pendingItems, 1)
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
-    RefreshButtonState()
-    
-    -- Auto-trigger next item deletion if items remain
+
     if #pendingItems > 0 then
         ShowTransitionNotification()
-        -- Update button position for next item
+        RefreshButtonState()
         if deleteFrame and deleteFrame.deleteBtn then
             local targetX, targetY = GetConfirmButtonTargetCenter()
             if targetX and targetY then
@@ -539,6 +535,8 @@ local function RemoveFirstPendingItem()
                 GearCoreUI.ExecuteDeletion()
             end
         end)
+    else
+        FinishQueue()
     end
 end
 
@@ -580,6 +578,7 @@ local function ShowActiveFrame()
 end
 
 local function HideProcessingFrame()
+    StopStatusUpdateTicker()
     if deleteFrame and deleteFrame.deleteBtn then
         lastDeleteButtonCenterX, lastDeleteButtonCenterY = deleteFrame.deleteBtn:GetCenter()
         deleteFrame.deleteBtn:Hide()
@@ -639,7 +638,6 @@ local function BeginCursorMonitor()
             cursorArmed = false
             awaitingConfirmation = false
             RemoveFirstPendingItem()
-            FinishQueue()
             return
         end
 
@@ -678,7 +676,6 @@ local function BeginArmMonitor()
             awaitingConfirmation = false
             ShowActiveFrame()
             RemoveFirstPendingItem()
-            FinishQueue()
             return
         end
 
@@ -809,7 +806,6 @@ function GearCoreUI.ExecuteDeletion()
             awaitingConfirmation = false
             cursorArmed = false
             RemoveFirstPendingItem()
-            FinishQueue()
         else
             print("|cffff4444GearCore:|r That item is still present. Confirm the popup, then click again if needed.")
         end
@@ -841,7 +837,6 @@ function GearCoreUI.ExecuteDeletion()
     if not equippedLink and not bag then
         print("|cffff4444GearCore:|r Skipping missing item: " .. (item.link or item.name or "unknown item"))
         RemoveFirstPendingItem()
-        FinishQueue()
         return
     end
 
