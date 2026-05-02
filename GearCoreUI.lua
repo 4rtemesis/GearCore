@@ -9,6 +9,7 @@ local pendingItems = {}
 local awaitingConfirmation = false
 local cursorArmed = false
 local processingTicker
+local statusUpdateTicker
 local lastDeleteButtonCenterX
 local lastDeleteButtonCenterY
 local lastConfirmButtonCenterX
@@ -69,6 +70,13 @@ local function BuildFrame()
     sf:SetScrollChild(sc)
     f.scrollChild = sc
     f.itemRows    = {}
+
+    -- Status message (shown when dead)
+    local statusMsg = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    statusMsg:SetPoint("TOP", f, "BOTTOM", 0, 8)
+    statusMsg:SetTextColor(1, 0.8, 0)
+    statusMsg:SetText("Resurrect to begin deleting items")
+    f.statusMsg = statusMsg
 
     -- Separate delete button (positioned independently at confirm button location)
     local btn = CreateFrame("Button", "GearCoreDeletionButton", UIParent, "UIPanelButtonTemplate")
@@ -191,29 +199,10 @@ local function RestoreFrameVisualState()
             f.deleteBtn:ClearAllPoints()
             f.deleteBtn:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
         end
-        f.deleteBtn:Show()
     end
 
-    C_Timer.After(0, function()
-        if deleteFrame and deleteFrame.deleteBtn then
-            deleteFrame:SetParent(UIParent)
-            deleteFrame:SetAlpha(1)
-            deleteFrame:SetScale(1)
-            deleteFrame:SetFrameStrata("DIALOG")
-            deleteFrame:Show()
-            deleteFrame:Raise()
-            
-            local targetX, targetY = GetConfirmButtonTargetCenter()
-            if targetX and targetY then
-                deleteFrame.deleteBtn:ClearAllPoints()
-                deleteFrame.deleteBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
-            else
-                deleteFrame.deleteBtn:ClearAllPoints()
-                deleteFrame.deleteBtn:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
-            end
-            deleteFrame.deleteBtn:Show()
-        end
-    end)
+    -- Start periodic status updates to show button when player resurrects
+    StartStatusUpdateTicker()
 
     return f
 end
@@ -223,6 +212,21 @@ local function StopProcessingTicker()
         processingTicker:Cancel()
         processingTicker = nil
     end
+end
+
+local function StopStatusUpdateTicker()
+    if statusUpdateTicker then
+        statusUpdateTicker:Cancel()
+        statusUpdateTicker = nil
+    end
+end
+
+local function StartStatusUpdateTicker()
+    StopStatusUpdateTicker()
+    statusUpdateTicker = C_Timer.NewTicker(0.5, function()
+        -- Periodically update button state based on alive/dead status
+        RefreshButtonState()
+    end)
 end
 
 local function SyncPendingDeletionDB()
@@ -244,15 +248,19 @@ local function RefreshButtonState()
     local f = EnsureFrame()
 
     if UnitIsDeadOrGhost("player") then
-        f.deleteBtn:SetText("Resurrect First")
-        f.deleteBtn:Disable()
+        if f.statusMsg then
+            f.statusMsg:Show()
+            f.statusMsg:SetText("Resurrect to begin deleting items")
+        end
         f.deleteBtn:Hide()
         return
     end
 
+    if f.statusMsg then
+        f.statusMsg:Hide()
+    end
+
     if #pendingItems == 0 then
-        f.deleteBtn:SetText("No Items")
-        f.deleteBtn:Disable()
         f.deleteBtn:Hide()
         return
     end
@@ -540,18 +548,21 @@ local function FinishQueue()
     awaitingConfirmation = false
     cursorArmed = false
     StopProcessingTicker()
+    StopStatusUpdateTicker()
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
 
     if #pendingItems == 0 then
         print("|cffff4444GearCore:|r Deletion complete — all marked items processed.")
         if deleteFrame then
+            deleteFrame.deleteBtn:Hide()
             deleteFrame:Hide()
         end
         return
     end
 
     local f = RestoreFrameVisualState()
+    -- Show button if alive, or status message if dead
     RefreshButtonState()
 end
 
@@ -566,6 +577,7 @@ end
 
 local function ShowActiveFrame()
     local f = RestoreFrameVisualState()
+    -- Show button if alive or status message if dead
     RefreshButtonState()
 end
 
@@ -755,6 +767,19 @@ function GearCoreUI.ExecuteDeletion()
         print("|cffff4444GearCore:|r No pending items to process.")
         RefreshButtonState()
         return
+    end
+
+    -- Position and show delete button for processing
+    if deleteFrame and deleteFrame.deleteBtn then
+        local targetX, targetY = GetConfirmButtonTargetCenter()
+        if targetX and targetY then
+            deleteFrame.deleteBtn:ClearAllPoints()
+            deleteFrame.deleteBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
+        else
+            deleteFrame.deleteBtn:ClearAllPoints()
+            deleteFrame.deleteBtn:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
+        end
+        deleteFrame.deleteBtn:Show()
     end
 
     local item = pendingItems[1]
