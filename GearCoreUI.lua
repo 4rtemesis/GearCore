@@ -541,27 +541,7 @@ end
 
 RemoveFirstPendingItem = function()
     table.remove(pendingItems, 1)
-    SyncPendingDeletionDB()
-    PopulateList(pendingItems)
-
-    if #pendingItems > 0 then
-        ShowTransitionNotification()
-        RefreshButtonState()
-        if deleteFrame and deleteFrame.deleteBtn then
-            local targetX, targetY = GetConfirmButtonTargetCenter()
-            if targetX and targetY then
-                deleteFrame.deleteBtn:ClearAllPoints()
-                deleteFrame.deleteBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
-            end
-        end
-        C_Timer.After(0.5, function()
-            if #pendingItems > 0 then
-                GearCoreUI.ExecuteDeletion()
-            end
-        end)
-    else
-        FinishQueue()
-    end
+    FinishQueue()
 end
 
 GetTrackedItemState = function(item)
@@ -712,11 +692,7 @@ local function BeginMoveMonitor()
         if bag then
             awaitingConfirmation = false
             cursorArmed = false
-            C_Timer.After(0.1, function()
-                if pendingItems[1] == item then
-                    GearCoreUI.ExecuteDeletion()
-                end
-            end)
+            ShowActiveFrame()
             return
         end
 
@@ -732,11 +708,7 @@ local function BeginMoveMonitor()
             if bagRetry then
                 awaitingConfirmation = false
                 cursorArmed = false
-                C_Timer.After(0.1, function()
-                    if pendingItems[1] == item then
-                        GearCoreUI.ExecuteDeletion()
-                    end
-                end)
+                ShowActiveFrame()
                 return
             end
 
