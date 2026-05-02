@@ -15,6 +15,11 @@ local lastDeleteButtonCenterY
 local lastConfirmButtonCenterX
 local lastConfirmButtonCenterY
 local GetDeletePopupFrame
+-- Forward declarations so functions defined later are upvalues, not nil global lookups
+local FinishQueue
+local ShowActiveFrame
+local GetTrackedItemState
+local RemoveFirstPendingItem
 
 -- On the modern WoW engine (post-Shadowlands, used by all Anniversary clients),
 -- SetBackdrop is only available on frames that inherit BackdropTemplate.
@@ -513,7 +518,28 @@ local function FindItemInBagsByLink(link)
     return nil, nil
 end
 
-local function RemoveFirstPendingItem()
+FinishQueue = function()
+    awaitingConfirmation = false
+    cursorArmed = false
+    StopProcessingTicker()
+    StopStatusUpdateTicker()
+    SyncPendingDeletionDB()
+    PopulateList(pendingItems)
+
+    if #pendingItems == 0 then
+        print("|cffff4444GearCore:|r Deletion complete — all marked items processed.")
+        if deleteFrame then
+            deleteFrame.deleteBtn:Hide()
+            deleteFrame:Hide()
+        end
+        return
+    end
+
+    local f = RestoreFrameVisualState()
+    RefreshButtonState()
+end
+
+RemoveFirstPendingItem = function()
     table.remove(pendingItems, 1)
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
@@ -538,29 +564,7 @@ local function RemoveFirstPendingItem()
     end
 end
 
-local function FinishQueue()
-    awaitingConfirmation = false
-    cursorArmed = false
-    StopProcessingTicker()
-    StopStatusUpdateTicker()
-    SyncPendingDeletionDB()
-    PopulateList(pendingItems)
-
-    if #pendingItems == 0 then
-        print("|cffff4444GearCore:|r Deletion complete — all marked items processed.")
-        if deleteFrame then
-            deleteFrame.deleteBtn:Hide()
-            deleteFrame:Hide()
-        end
-        return
-    end
-
-    local f = RestoreFrameVisualState()
-    -- Show button if alive, or status message if dead
-    RefreshButtonState()
-end
-
-local function GetTrackedItemState(item)
+GetTrackedItemState = function(item)
     local equippedLink = GetInventoryItemLink("player", item.slot)
     if equippedLink ~= item.link then
         equippedLink = nil
@@ -569,9 +573,8 @@ local function GetTrackedItemState(item)
     return equippedLink, bag, bagSlot
 end
 
-local function ShowActiveFrame()
+ShowActiveFrame = function()
     local f = RestoreFrameVisualState()
-    -- Show button if alive or status message if dead
     RefreshButtonState()
 end
 
@@ -850,8 +853,15 @@ function GearCoreUI.ExecuteDeletion()
 
         cursorArmed = false
         awaitingConfirmation = false
-        BeginMoveMonitor()
         PickupContainerItem(bag, bagSlot)
+        -- We know exactly where the item landed; pick it up after one frame
+        local targetBag, targetBagSlot = bag, bagSlot
+        C_Timer.After(0.15, function()
+            if not pendingItems[1] or pendingItems[1] ~= item then return end
+            ClearCursor()
+            BeginArmMonitor()
+            PickupContainerItem(targetBag, targetBagSlot)
+        end)
         return
     end
 

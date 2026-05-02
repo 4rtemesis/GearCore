@@ -7,5 +7,6 @@
 ## SavedVariables: GearCoreDB
 
 GearCore.lua
+GearCoreBroadcast.lua
 GearCoreOptions.lua
 GearCoreUI.lua
