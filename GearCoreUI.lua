@@ -211,8 +211,6 @@ local function RefreshButtonState()
 
     if awaitingConfirmation then
         f.deleteBtn:SetText("CONFIRM")
-    elseif cursorArmed and CursorHasItem() then
-        f.deleteBtn:SetText("DESTROY")
     else
         f.deleteBtn:SetText("DELETE")
     end
@@ -662,11 +660,14 @@ local function BeginArmMonitor()
 
         if CursorHasItem() then
             StopProcessingTicker()
-            cursorArmed = true
+            cursorArmed = false
             awaitingConfirmation = false
-            ShowActiveFrame()
-            RefreshButtonState()
-            BeginCursorMonitor()
+            DeleteCursorItem()
+            awaitingConfirmation = GetDeletePopupFrame() and true or false
+            if awaitingConfirmation then
+                PositionDeletePopup()
+            end
+            BeginProcessingMonitor()
             return
         end
 
@@ -704,15 +705,19 @@ local function BeginMoveMonitor()
 
         local equippedLink, bag = GetTrackedItemState(item)
         StopProcessingTicker()
-        ShowActiveFrame()
 
         if bag then
             awaitingConfirmation = false
             cursorArmed = false
-            RefreshButtonState()
-            print("|cffff4444GearCore:|r Item moved to bag. Click Delete Next Item again to pick it up.")
+            C_Timer.After(0.1, function()
+                if pendingItems[1] == item then
+                    GearCoreUI.ExecuteDeletion()
+                end
+            end)
             return
         end
+
+        ShowActiveFrame()
 
         local function CheckMoveRetry(remaining)
             if not pendingItems[1] or pendingItems[1] ~= item then
@@ -724,8 +729,11 @@ local function BeginMoveMonitor()
             if bagRetry then
                 awaitingConfirmation = false
                 cursorArmed = false
-                RefreshButtonState()
-                print("|cffff4444GearCore:|r Item moved to bag. Click Delete Next Item again to pick it up.")
+                C_Timer.After(0.1, function()
+                    if pendingItems[1] == item then
+                        GearCoreUI.ExecuteDeletion()
+                    end
+                end)
                 return
             end
 
@@ -809,26 +817,6 @@ function GearCoreUI.ExecuteDeletion()
         else
             print("|cffff4444GearCore:|r That item is still present. Confirm the popup, then click again if needed.")
         end
-        return
-    end
-
-    if cursorArmed then
-        if not CursorHasItem() then
-            cursorArmed = false
-            ShowActiveFrame()
-            RefreshButtonState()
-            print("|cffff4444GearCore:|r Held item was cleared. Click again to retry.")
-            return
-        end
-
-        HideNow()
-        DeleteCursorItem()
-        awaitingConfirmation = GetDeletePopupFrame() and true or false
-        cursorArmed = false
-        if awaitingConfirmation then
-            PositionDeletePopup()
-        end
-        BeginProcessingMonitor()
         return
     end
 
