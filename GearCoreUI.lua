@@ -174,39 +174,6 @@ local function AlignFrameButtonToConfirmTarget(frame)
     frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", frameX + deltaX, frameY + deltaY)
 end
 
-local function RestoreFrameVisualState()
-    local f = EnsureFrame()
-    if GearCoreOptions and GearCoreOptions.Hide then
-        GearCoreOptions.Hide()
-    end
-
-    f:ClearAllPoints()
-    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
-    f:SetParent(UIParent)
-    f:SetAlpha(1)
-    f:SetScale(1)
-    f:SetFrameStrata("DIALOG")
-    f:Show()
-    f:Raise()
-
-    -- Position delete button at where confirm button will be
-    if f.deleteBtn then
-        local targetX, targetY = GetConfirmButtonTargetCenter()
-        if targetX and targetY then
-            f.deleteBtn:ClearAllPoints()
-            f.deleteBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
-        else
-            f.deleteBtn:ClearAllPoints()
-            f.deleteBtn:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
-        end
-    end
-
-    -- Start periodic status updates to show button when player resurrects
-    StartStatusUpdateTicker()
-
-    return f
-end
-
 local function StopProcessingTicker()
     if processingTicker then
         processingTicker:Cancel()
@@ -218,29 +185,6 @@ local function StopStatusUpdateTicker()
     if statusUpdateTicker then
         statusUpdateTicker:Cancel()
         statusUpdateTicker = nil
-    end
-end
-
-local function StartStatusUpdateTicker()
-    StopStatusUpdateTicker()
-    statusUpdateTicker = C_Timer.NewTicker(0.5, function()
-        -- Periodically update button state based on alive/dead status
-        RefreshButtonState()
-    end)
-end
-
-local function SyncPendingDeletionDB()
-    if #pendingItems > 0 then
-        GearCoreDB.pendingDeletion = {}
-        for i, item in ipairs(pendingItems) do
-            GearCoreDB.pendingDeletion[i] = {
-                slot = item.slot,
-                link = item.link,
-                name = item.name,
-            }
-        end
-    else
-        GearCoreDB.pendingDeletion = nil
     end
 end
 
@@ -274,6 +218,60 @@ local function RefreshButtonState()
     end
     f.deleteBtn:Enable()
     f.deleteBtn:Show()
+end
+
+local function StartStatusUpdateTicker()
+    StopStatusUpdateTicker()
+    statusUpdateTicker = C_Timer.NewTicker(0.5, function()
+        RefreshButtonState()
+    end)
+end
+
+local function SyncPendingDeletionDB()
+    if #pendingItems > 0 then
+        GearCoreDB.pendingDeletion = {}
+        for i, item in ipairs(pendingItems) do
+            GearCoreDB.pendingDeletion[i] = {
+                slot = item.slot,
+                link = item.link,
+                name = item.name,
+            }
+        end
+    else
+        GearCoreDB.pendingDeletion = nil
+    end
+end
+
+local function RestoreFrameVisualState()
+    local f = EnsureFrame()
+    if GearCoreOptions and GearCoreOptions.Hide then
+        GearCoreOptions.Hide()
+    end
+
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
+    f:SetParent(UIParent)
+    f:SetAlpha(1)
+    f:SetScale(1)
+    f:SetFrameStrata("DIALOG")
+    f:Show()
+    f:Raise()
+
+    -- Position delete button at where confirm button will be
+    if f.deleteBtn then
+        local targetX, targetY = GetConfirmButtonTargetCenter()
+        if targetX and targetY then
+            f.deleteBtn:ClearAllPoints()
+            f.deleteBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
+        else
+            f.deleteBtn:ClearAllPoints()
+            f.deleteBtn:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
+        end
+    end
+
+    StartStatusUpdateTicker()
+
+    return f
 end
 
 local function ShowTransitionNotification()
