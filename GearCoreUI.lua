@@ -10,10 +10,6 @@ local awaitingConfirmation = false
 local cursorArmed = false
 local processingTicker
 local statusUpdateTicker
-local lastDeleteButtonCenterX
-local lastDeleteButtonCenterY
-local lastConfirmButtonCenterX
-local lastConfirmButtonCenterY
 local GetDeletePopupFrame
 -- Forward declarations so functions defined later are upvalues, not nil global lookups
 local FinishQueue
@@ -83,12 +79,12 @@ local function BuildFrame()
     statusMsg:SetText("Resurrect to begin deleting items")
     f.statusMsg = statusMsg
 
-    -- Separate delete button (positioned independently at confirm button location)
-    local btn = CreateFrame("Button", "GearCoreDeletionButton", UIParent, "UIPanelButtonTemplate")
-    btn:SetSize(140, 32)
-    btn:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    btn:SetFrameStrata("TOOLTIP")
-    btn:SetText("DELETE")
+    -- Delete button anchored directly below the list frame
+    local btn = CreateFrame("Button", "GearCoreDeletionButton", f, "UIPanelButtonTemplate")
+    btn:SetSize(160, 32)
+    btn:SetPoint("TOP", f, "BOTTOM", 0, -6)
+    btn:SetFrameStrata("DIALOG")
+    btn:SetText("DELETE NEXT")
     btn:SetScript("OnClick", GearCoreUI.ExecuteDeletion)
     f.deleteBtn = btn
     btn:Hide()
@@ -105,79 +101,6 @@ local function EnsureFrame()
     return deleteFrame
 end
 
-local function GetConfirmButtonTargetCenter()
-    local popup = GetDeletePopupFrame and GetDeletePopupFrame() or nil
-    if popup and popup.button1 then
-        local x, y = popup.button1:GetCenter()
-        if x and y then
-            lastConfirmButtonCenterX, lastConfirmButtonCenterY = x, y
-            return x, y
-        end
-    end
-
-    if lastConfirmButtonCenterX and lastConfirmButtonCenterY then
-        return lastConfirmButtonCenterX, lastConfirmButtonCenterY
-    end
-
-    local defaultButton = _G["StaticPopup1Button1"]
-    if defaultButton then
-        local x, y = defaultButton:GetCenter()
-        if x and y then
-            lastConfirmButtonCenterX, lastConfirmButtonCenterY = x, y
-            return x, y
-        end
-    end
-
-    local defaultPopup = _G["StaticPopup1"]
-    if defaultPopup and defaultPopup.button1 then
-        local _, _, _, popupX, popupY = defaultPopup:GetPoint(1)
-        popupX = popupX or 0
-        popupY = popupY or 0
-
-        local point, _, _, relX, relY = defaultPopup.button1:GetPoint(1)
-        relX = relX or 0
-        relY = relY or 0
-
-        local buttonWidth = defaultPopup.button1:GetWidth() or 0
-        local buttonHeight = defaultPopup.button1:GetHeight() or 0
-        local popupWidth = defaultPopup:GetWidth() or 0
-        local popupHeight = defaultPopup:GetHeight() or 0
-
-        local x = (GetScreenWidth() / 2) + popupX - (popupWidth / 2) + relX + (buttonWidth / 2)
-        local y = (GetScreenHeight() / 2) + popupY - (popupHeight / 2) + relY + (buttonHeight / 2)
-        lastConfirmButtonCenterX, lastConfirmButtonCenterY = x, y
-        return x, y
-    end
-
-    return nil, nil
-end
-
-local function AlignFrameButtonToConfirmTarget(frame)
-    if not frame or not frame.deleteBtn then
-        return
-    end
-
-    local targetX, targetY = GetConfirmButtonTargetCenter()
-    if not targetX or not targetY then
-        return
-    end
-
-    local btnX, btnY = frame.deleteBtn:GetCenter()
-    if not btnX or not btnY then
-        return
-    end
-
-    local frameX, frameY = frame:GetCenter()
-    if not frameX or not frameY then
-        return
-    end
-
-    local deltaX = targetX - btnX
-    local deltaY = targetY - btnY
-
-    frame:ClearAllPoints()
-    frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", frameX + deltaX, frameY + deltaY)
-end
 
 local function StopProcessingTicker()
     if processingTicker then
@@ -214,11 +137,7 @@ local function RefreshButtonState()
         return
     end
 
-    if awaitingConfirmation then
-        f.deleteBtn:SetText("CONFIRM")
-    else
-        f.deleteBtn:SetText("DELETE")
-    end
+    f.deleteBtn:SetText(awaitingConfirmation and "CONFIRM" or "DELETE NEXT")
     f.deleteBtn:Enable()
     f.deleteBtn:Show()
 end
@@ -260,17 +179,6 @@ local function RestoreFrameVisualState()
     f:Show()
     f:Raise()
 
-    -- Position delete button at where confirm button will be
-    if f.deleteBtn then
-        local targetX, targetY = GetConfirmButtonTargetCenter()
-        if targetX and targetY then
-            f.deleteBtn:ClearAllPoints()
-            f.deleteBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
-        else
-            f.deleteBtn:ClearAllPoints()
-            f.deleteBtn:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
-        end
-    end
 
     StartStatusUpdateTicker()
 
@@ -323,7 +231,6 @@ local function ResolveProcessingState()
     end
 
     StopProcessingTicker()
-    ShowActiveFrame()
 
     local equippedLink, bag = GetTrackedItemState(item)
 
@@ -333,6 +240,8 @@ local function ResolveProcessingState()
         RemoveFirstPendingItem()
         return
     end
+
+    ShowActiveFrame()
 
     local function CheckDeleteRetry(remaining)
         if not pendingItems[1] or pendingItems[1] ~= item then
@@ -369,53 +278,18 @@ end
 local function PositionDeletePopup()
     local popup = GetDeletePopupFrame()
     local f = deleteFrame
-    if not popup or not f or not f.deleteBtn then
-        return
-    end
+    if not popup or not f or not f.deleteBtn then return end
 
     if not popup.__gearcoreHooked then
         popup.__gearcoreHooked = true
         popup:HookScript("OnHide", function()
-            C_Timer.After(0, function()
-                ResolveProcessingState()
-            end)
+            C_Timer.After(0, function() ResolveProcessingState() end)
         end)
     end
 
-    local btn = f.deleteBtn
-    local targetX = lastDeleteButtonCenterX
-    local targetY = lastDeleteButtonCenterY
-    if not targetX or not targetY then
-        targetX, targetY = btn:GetCenter()
-    end
-
-    if not targetX or not targetY then
-        popup:ClearAllPoints()
-        popup:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        return
-    end
-
-    local popupCenterX, popupCenterY = popup:GetCenter()
-    local confirmCenterX, confirmCenterY
-    if popup.button1 then
-        confirmCenterX, confirmCenterY = popup.button1:GetCenter()
-        if confirmCenterX and confirmCenterY then
-            lastConfirmButtonCenterX, lastConfirmButtonCenterY = confirmCenterX, confirmCenterY
-        end
-    end
-    if not popupCenterX or not popupCenterY or not confirmCenterX or not confirmCenterY then
-        popup:ClearAllPoints()
-        popup:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        return
-    end
-
-    local offsetX = confirmCenterX - popupCenterX
-    local offsetY = confirmCenterY - popupCenterY
-    local desiredCenterX = targetX - offsetX
-    local desiredCenterY = targetY - offsetY
-
+    -- Centre the popup over the delete button so confirm is in the same spot
     popup:ClearAllPoints()
-    popup:SetPoint("CENTER", UIParent, "BOTTOMLEFT", desiredCenterX, desiredCenterY)
+    popup:SetPoint("BOTTOM", f.deleteBtn, "TOP", 0, 4)
 end
 
 -- ── Item list population ──────────────────────────────────────────────────────
@@ -541,7 +415,30 @@ end
 
 RemoveFirstPendingItem = function()
     table.remove(pendingItems, 1)
-    FinishQueue()
+    SyncPendingDeletionDB()
+    PopulateList(pendingItems)
+    awaitingConfirmation = false
+    cursorArmed = false
+    StopProcessingTicker()
+    StopStatusUpdateTicker()
+
+    if #pendingItems == 0 then
+        print("|cffff4444GearCore:|r Deletion complete — all marked items processed.")
+        if deleteFrame then
+            deleteFrame.deleteBtn:Hide()
+            deleteFrame:Hide()
+        end
+        return
+    end
+
+    local f = EnsureFrame()
+    f:Show()
+    if f.deleteBtn then
+        f.deleteBtn:SetText("DELETE NEXT")
+        f.deleteBtn:Enable()
+        f.deleteBtn:Show()
+    end
+    StartStatusUpdateTicker()
 end
 
 GetTrackedItemState = function(item)
@@ -561,12 +458,7 @@ end
 local function HideProcessingFrame()
     StopStatusUpdateTicker()
     if deleteFrame and deleteFrame.deleteBtn then
-        lastDeleteButtonCenterX, lastDeleteButtonCenterY = deleteFrame.deleteBtn:GetCenter()
         deleteFrame.deleteBtn:Hide()
-        deleteFrame:ClearAllPoints()
-        deleteFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
-        deleteFrame:SetAlpha(1)
-        deleteFrame:Show()
     end
 end
 
@@ -747,18 +639,6 @@ function GearCoreUI.ExecuteDeletion()
         return
     end
 
-    -- Position and show delete button for processing
-    if deleteFrame and deleteFrame.deleteBtn then
-        local targetX, targetY = GetConfirmButtonTargetCenter()
-        if targetX and targetY then
-            deleteFrame.deleteBtn:ClearAllPoints()
-            deleteFrame.deleteBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
-        else
-            deleteFrame.deleteBtn:ClearAllPoints()
-            deleteFrame.deleteBtn:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
-        end
-        deleteFrame.deleteBtn:Show()
-    end
 
     local item = pendingItems[1]
     local frameHiddenForProcessing = false
