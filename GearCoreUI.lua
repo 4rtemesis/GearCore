@@ -136,6 +136,11 @@ local function RefreshButtonState()
         return
     end
 
+    -- Keep button hidden while a deletion step is actively in flight.
+    if processingTicker then
+        return
+    end
+
     f.deleteBtn:SetText(awaitingConfirmation and "CONFIRM" or "DELETE NEXT")
     f.deleteBtn:Enable()
     f.deleteBtn:Show()
@@ -478,7 +483,7 @@ ShowActiveFrame = function()
 end
 
 local function HideProcessingFrame()
-    StopStatusUpdateTicker()
+    -- Leave statusUpdateTicker running; RefreshButtonState gates on processingTicker.
     if deleteFrame and deleteFrame.deleteBtn then
         deleteFrame.deleteBtn:Hide()
     end
