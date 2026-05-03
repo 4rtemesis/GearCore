@@ -29,7 +29,7 @@ local function BuildFrame()
     local f = CreateFrame("Frame", "GearCoreDeletionFrame", UIParent, backdropTemplate)
     f:SetSize(350, 300)
     f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
-    f:SetFrameStrata("DIALOG")
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
@@ -83,7 +83,6 @@ local function BuildFrame()
     local btn = CreateFrame("Button", "GearCoreDeletionButton", f, "UIPanelButtonTemplate")
     btn:SetSize(160, 32)
     btn:SetPoint("TOP", f, "BOTTOM", 0, -6)
-    btn:SetFrameStrata("DIALOG")
     btn:SetText("DELETE NEXT")
     btn:SetScript("OnClick", GearCoreUI.ExecuteDeletion)
     f.deleteBtn = btn
@@ -175,10 +174,9 @@ local function RestoreFrameVisualState()
     f:SetParent(UIParent)
     f:SetAlpha(1)
     f:SetScale(1)
-    f:SetFrameStrata("DIALOG")
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:Show()
     f:Raise()
-
 
     StartStatusUpdateTicker()
 
@@ -283,13 +281,32 @@ local function PositionDeletePopup()
     if not popup.__gearcoreHooked then
         popup.__gearcoreHooked = true
         popup:HookScript("OnHide", function()
+            popup.__gearcorePositioned = false
             C_Timer.After(0, function() ResolveProcessingState() end)
         end)
     end
 
-    -- Centre the popup over the delete button so confirm is in the same spot
+    if popup.__gearcorePositioned then return end
+    popup.__gearcorePositioned = true
+
+    local btn = f.deleteBtn
+    -- Step 1: centre popup on our button so btn1's offset from popup is measurable.
     popup:ClearAllPoints()
-    popup:SetPoint("BOTTOM", f.deleteBtn, "TOP", 0, 4)
+    popup:SetPoint("CENTER", btn, "CENTER", 0, 0)
+
+    -- Step 2: next frame, shift popup so its Button1 lands exactly on our button.
+    C_Timer.After(0, function()
+        if not popup:IsShown() then return end
+        local btn1 = _G[popup:GetName() .. "Button1"]
+        if not btn1 then return end
+        local bx, by   = btn:GetCenter()
+        local b1x, b1y = btn1:GetCenter()
+        if not bx or not b1x then return end
+        -- popup centre must move by (bx - b1x, by - b1y) relative to its current spot.
+        -- current popup centre = (bx, by), so new centre = (2*bx - b1x, 2*by - b1y).
+        popup:ClearAllPoints()
+        popup:SetPoint("CENTER", UIParent, "BOTTOMLEFT", 2 * bx - b1x, 2 * by - b1y)
+    end)
 end
 
 -- ── Item list population ──────────────────────────────────────────────────────
@@ -376,14 +393,19 @@ function GearCoreUI.ShowDeletionFrame(items)
     RefreshButtonState()
 end
 
+local function GetItemIdFromLink(link)
+    return link and link:match("item:(%d+)")
+end
+
 local function FindItemInBagsByLink(link)
-    if not link then
-        return nil, nil
-    end
+    if not link then return nil, nil end
+    local targetId = GetItemIdFromLink(link)
+    if not targetId then return nil, nil end
 
     for bag = 0, 4 do
         for slot = 1, BagGetNumSlots(bag) do
-            if BagGetItemLink(bag, slot) == link then
+            local bagLink = BagGetItemLink(bag, slot)
+            if bagLink and GetItemIdFromLink(bagLink) == targetId then
                 return bag, slot
             end
         end
@@ -443,7 +465,7 @@ end
 
 GetTrackedItemState = function(item)
     local equippedLink = GetInventoryItemLink("player", item.slot)
-    if equippedLink ~= item.link then
+    if equippedLink and GetItemIdFromLink(equippedLink) ~= GetItemIdFromLink(item.link) then
         equippedLink = nil
     end
     local bag, bagSlot = FindItemInBagsByLink(item.link)
@@ -472,13 +494,20 @@ local function BeginProcessingMonitor()
     StopProcessingTicker()
     HideProcessingFrame()
 
+    local popupWasSeen = false
+
     processingTicker = C_Timer.NewTicker(0.1, function()
         local popup = GetDeletePopupFrame()
         if popup then
             awaitingConfirmation = true
-            PositionDeletePopup()
+            if not popupWasSeen then
+                popupWasSeen = true
+                PositionDeletePopup()
+            end
             return
         end
+
+        popupWasSeen = false
 
         if CursorHasItem() then
             return
