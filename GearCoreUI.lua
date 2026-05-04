@@ -29,7 +29,7 @@ local function BuildFrame()
     -- Item list frame (compact, no button)
     local f = CreateFrame("Frame", "GearCoreDeletionFrame", UIParent, backdropTemplate)
     f:SetSize(350, 300)
-    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetMovable(true)
     f:EnableMouse(true)
@@ -65,7 +65,7 @@ local function BuildFrame()
 
     local sf = CreateFrame("ScrollFrame", "GearCoreDeletionScroll", f, "UIPanelScrollFrameTemplate")
     sf:SetPoint("TOPLEFT",     scrollBG, "TOPLEFT",     2, -2)
-    sf:SetPoint("BOTTOMRIGHT", scrollBG, "BOTTOMRIGHT", -2, 2)
+    sf:SetPoint("BOTTOMRIGHT", scrollBG, "BOTTOMRIGHT", -22, 2)
 
     local sc = CreateFrame("Frame", nil, sf)
     sc:SetWidth(264)
@@ -129,16 +129,14 @@ local function RefreshButtonState()
         return
     end
 
-    if f.statusMsg then
-        f.statusMsg:Hide()
-    end
+    if f.statusMsg then f.statusMsg:Hide() end
 
     if #pendingItems == 0 then
         f.deleteBtn:Hide()
         return
     end
 
-    -- Keep button hidden while processing or cursor/popup is active.
+    -- Keep button hidden during any active processing step.
     if processingTicker or CursorHasItem() or GetDeletePopupFrame() then
         return
     end
@@ -177,7 +175,7 @@ local function RestoreFrameVisualState()
     end
 
     f:ClearAllPoints()
-    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     f:SetParent(UIParent)
     f:SetAlpha(1)
     f:SetScale(1)
@@ -325,9 +323,14 @@ local function PopulateList(items)
     local y  = 4
 
     for i, item in ipairs(items) do
-        local row = CreateFrame("Frame", nil, sc)
+        local row = CreateFrame("Frame", nil, sc, backdropTemplate)
         row:SetSize(264, 30)
         row:SetPoint("TOPLEFT", sc, "TOPLEFT", 4, -y)
+
+        if i == 1 then
+            row:SetBackdrop({ bgFile = "Interface\\ChatFrame\\ChatFrameBackground", tile = true, tileSize = 16 })
+            row:SetBackdropColor(0.9, 0.8, 0.1, 0.35)
+        end
 
         local icon = row:CreateTexture(nil, "ARTWORK")
         icon:SetSize(24, 24)
@@ -335,7 +338,7 @@ local function PopulateList(items)
         local tex = GetInventoryItemTexture("player", item.slot)
         icon:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
 
-        local lbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local lbl = row:CreateFontString(nil, "OVERLAY", i == 1 and "GameFontNormal" or "GameFontDisable")
         lbl:SetPoint("LEFT",  icon, "RIGHT", 6, 0)
         lbl:SetPoint("RIGHT", row,  "RIGHT", 0, 0)
         lbl:SetJustifyH("LEFT")
@@ -517,11 +520,7 @@ local function BeginProcessingMonitor()
         end
 
         popupWasSeen = false
-
-        if CursorHasItem() then
-            return
-        end
-
+        if CursorHasItem() then return end
         ResolveProcessingState()
     end)
 end
