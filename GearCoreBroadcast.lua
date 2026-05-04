@@ -104,20 +104,18 @@ local function Display(d)
     local lvlCl    = "(lvl " .. (d.level or "?") .. " " .. (d.class or "") .. ")"
     local srcStr   = (d.source ~= "" and d.source ~= "Unknown") and d.source or "unknown"
     local itemStr  = (d.link and d.link ~= "") and d.link or "an item"
-    local ilvlStr  = d.ilvl > 0 and (" (ilvl " .. d.ilvl .. ")") or ""
     local countStr = d.count .. (d.count == 1 and " item" or " items")
 
     local line = "|cffff4444[GearCore]|r " .. nameStr .. " " .. lvlCl
         .. " died to " .. srcStr .. " in " .. d.zone
-        .. ", losing " .. countStr .. ", including: " .. itemStr .. ilvlStr
+        .. ", losing " .. countStr .. ", including: " .. itemStr
 
     if GearCore.GetSetting("showDeathPopup") then
         print(line)
     end
 
     if GearCore.GetSetting("showDeathWarning") then
-        local plain = d.name .. " lost " .. countStr .. ", including: "
-            .. (d.link and d.link ~= "" and d.link or "an item") .. ilvlStr
+        local plain = d.name .. " just lost " .. countStr .. " items, including " .. itemStr .. "."
         RaidNotice_AddMessage(RaidWarningFrame, plain, ChatTypeInfo["RAID_WARNING"])
     end
 end
