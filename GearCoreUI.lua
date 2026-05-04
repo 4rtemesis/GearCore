@@ -47,6 +47,7 @@ local function BuildFrame()
     local sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     sub:SetPoint("TOP", title, "BOTTOM", 0, -6)
     sub:SetText("Items marked for deletion:")
+    f.subLabel = sub
 
     local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     btn:SetSize(210, 30)
@@ -448,6 +449,10 @@ function GearCoreUI.ShowDeletionFrame(items)
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
     local f = RestoreFrameVisualState()
+    if f.subLabel then
+        local src = GearCoreDB and GearCoreDB.lastDeathSource
+        f.subLabel:SetText(src and ("Killed by: " .. src .. "\nItems marked for deletion:") or "Items marked for deletion:")
+    end
     RefreshButtonState()
 end
 

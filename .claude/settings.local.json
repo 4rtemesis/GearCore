@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Bash(tree -a \"c:\\\\Users\\\\kim_c\\\\Documents\\\\GitHub\\\\GearCore\" -o /tmp/tree_output.txt)",
+      "Read(//tmp/**)"
     ]
   }
 }

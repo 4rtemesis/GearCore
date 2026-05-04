@@ -19,9 +19,10 @@ local GEAR_SLOTS = { 1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17,18 }
 -- Classes whose ranged slot (18) is a wand, not a bow/gun
 local WAND_CLASSES = { PRIEST=true, MAGE=true, WARLOCK=true }
 
-local combatSnapshot = {}  -- items recorded on combat entry
-local markedItems    = {}  -- items selected for deletion after death
-local isDead         = false
+local combatSnapshot  = {}   -- items recorded on combat entry
+local markedItems     = {}   -- items selected for deletion after death
+local isDead          = false
+local lastDeathSource = nil  -- last attacker/environment that hit the player
 
 -- ── Settings ──────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,8 @@ local function BuildMarkedItems(source)
 end
 
 local function OnPlayerDead()
+    C_Timer.After(0.65, Screenshot)
+
     local source = (#combatSnapshot > 0) and combatSnapshot or nil
     if not source then
         TakeSnapshot()
@@ -135,6 +138,8 @@ local function OnPlayerDead()
                 slot = item.slot, link = item.link, name = item.name,
             }
         end
+        GearCoreDB.lastDeathSource = lastDeathSource
+        GearCoreBroadcast.Announce(markedItems, lastDeathSource)
         GearCoreUI.ShowDeletionFrame(markedItems)
     else
         print("|cffff4444GearCore:|r No items marked for deletion.")
@@ -163,12 +168,13 @@ eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("PLAYER_DEAD")
 eventFrame:RegisterEvent("PLAYER_ALIVE")
+eventFrame:RegisterEvent("PLAYER_UNGHOST")
+eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 eventFrame:RegisterEvent("MAIL_SHOW")
 eventFrame:RegisterEvent("AUCTION_HOUSE_SHOW")
 eventFrame:RegisterEvent("TRADE_SHOW")
 eventFrame:RegisterEvent("MERCHANT_SHOW")
 eventFrame:RegisterEvent("MERCHANT_CLOSED")
-eventFrame:RegisterEvent("PLAYER_UNGHOST")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
@@ -198,6 +204,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         -- Clear snapshot when leaving combat alive so stale data isn't used later
         if not isDead then
             wipe(combatSnapshot)
+            lastDeathSource = nil
         end
 
     elseif event == "PLAYER_DEAD" then
@@ -210,6 +217,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         isDead = false
         wipe(combatSnapshot)
         wipe(markedItems)
+        lastDeathSource = nil
 
         if not UnitIsDeadOrGhost("player") then
             if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
@@ -221,12 +229,23 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         end
 
     elseif event == "PLAYER_UNGHOST" then
-        -- Fires when the player fully resurrects from ghost state (spirit healer or corpse run).
+        -- Guard: fires on zone changes while still in ghost form — only proceed when fully alive.
+        if UnitIsDeadOrGhost("player") then return end
         if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
             print("|cffff4444GearCore:|r Resurrection detected — click the GearCore button to process your pending deletions.")
             C_Timer.After(1, function()
                 GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
             end)
+        end
+
+    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        local _, ev, _, _, srcName, _, _, dstGUID = CombatLogGetCurrentEventInfo()
+        if dstGUID == UnitGUID("player") then
+            if ev == "ENVIRONMENTAL_DAMAGE" then
+                lastDeathSource = select(12, CombatLogGetCurrentEventInfo())  -- e.g. "Falling", "Drowning"
+            elseif ev:find("DAMAGE") and srcName and srcName ~= "" then
+                lastDeathSource = srcName
+            end
         end
 
     elseif event == "MAIL_SHOW" then
