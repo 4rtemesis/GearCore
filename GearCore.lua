@@ -124,31 +124,36 @@ end
 
 local function OnPlayerDead()
     print("|cffff4444GearCore DEBUG:|r OnPlayerDead called.")
-    if Screenshot then C_Timer.After(0.65, Screenshot) end
+    local ok, err = pcall(function()
+        if Screenshot then C_Timer.After(0.65, Screenshot) end
 
-    local source = (#combatSnapshot > 0) and combatSnapshot or nil
-    print("|cffff4444GearCore DEBUG:|r combatSnapshot size: " .. #combatSnapshot)
-    if not source then
-        TakeSnapshot()
-        source = combatSnapshot
-        print("|cffff4444GearCore DEBUG:|r TakeSnapshot fallback, found: " .. #source)
-    end
-
-    BuildMarkedItems(source)
-    print("|cffff4444GearCore DEBUG:|r markedItems count: " .. #markedItems)
-
-    if #markedItems > 0 then
-        GearCoreDB.pendingDeletion = {}
-        for _, item in ipairs(markedItems) do
-            GearCoreDB.pendingDeletion[#GearCoreDB.pendingDeletion+1] = {
-                slot = item.slot, link = item.link, name = item.name,
-            }
+        local source = (#combatSnapshot > 0) and combatSnapshot or nil
+        print("|cffff4444GearCore DEBUG:|r snapshot=" .. #combatSnapshot)
+        if not source then
+            TakeSnapshot()
+            source = combatSnapshot
+            print("|cffff4444GearCore DEBUG:|r fallback snapshot=" .. #source)
         end
-        GearCoreDB.lastDeathSource = lastDeathSource
-        GearCoreBroadcast.Announce(markedItems, lastDeathSource)
-        GearCoreUI.ShowDeletionFrame(markedItems)
-    else
-        print("|cffff4444GearCore:|r No items marked for deletion.")
+
+        BuildMarkedItems(source)
+        print("|cffff4444GearCore DEBUG:|r marked=" .. #markedItems)
+
+        if #markedItems > 0 then
+            GearCoreDB.pendingDeletion = {}
+            for _, item in ipairs(markedItems) do
+                GearCoreDB.pendingDeletion[#GearCoreDB.pendingDeletion+1] = {
+                    slot = item.slot, link = item.link, name = item.name,
+                }
+            end
+            GearCoreDB.lastDeathSource = lastDeathSource
+            GearCoreBroadcast.Announce(markedItems, lastDeathSource)
+            GearCoreUI.ShowDeletionFrame(markedItems)
+        else
+            print("|cffff4444GearCore:|r No items marked for deletion.")
+        end
+    end)
+    if not ok then
+        print("|cffff4444GearCore ERROR:|r " .. tostring(err))
     end
 end
 
