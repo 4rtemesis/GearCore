@@ -1,5 +1,5 @@
 -- GearCoreBroadcast: Announces death penalties to other GearCore players via a shared channel.
--- Message format: GCDEATH~name~class~level~zone~source~itemLink~ilvl
+-- Message format: GCDEATH~name~class~level~zone~source~itemLink~ilvl~count
 -- Init() is called by GearCore.lua on ADDON_LOADED; it defers the channel join to PLAYER_LOGIN.
 
 GearCoreBroadcast = {}
@@ -58,7 +58,8 @@ local function Send(markedItems, deathSource)
     local bestItem, bestIlvl = FindHighestIlvlItem(markedItems)
     local link = bestItem and bestItem.link or ""
 
-    local msg = table.concat({ PREFIX, name, cl, level, zone, src, link, bestIlvl }, DELIM)
+    local count = #markedItems
+    local msg = table.concat({ PREFIX, name, cl, level, zone, src, link, bestIlvl, count }, DELIM)
     SendChatMessage(msg, "CHANNEL", nil, channelNum)
 end
 
@@ -89,6 +90,7 @@ local function Parse(msgStr)
         source = parts[6],
         link   = parts[7],
         ilvl   = tonumber(parts[8]) or 0,
+        count  = tonumber(parts[9]) or 1,
     }
 end
 
@@ -98,22 +100,24 @@ local function Display(d)
     if seenKeys[key] and seenKeys[key] > now then return end
     seenKeys[key] = now + 30
 
-    local nameStr = ClassColorCode(d.class) .. d.name .. "|r"
-    local lvlCl   = "(lvl " .. (d.level or "?") .. " " .. (d.class or "") .. ")"
-    local srcStr  = (d.source ~= "" and d.source ~= "Unknown") and d.source or "unknown"
-    local itemStr = (d.link and d.link ~= "") and d.link or "an item"
-    local ilvlStr = d.ilvl > 0 and (" (ilvl " .. d.ilvl .. ")") or ""
+    local nameStr  = ClassColorCode(d.class) .. d.name .. "|r"
+    local lvlCl    = "(lvl " .. (d.level or "?") .. " " .. (d.class or "") .. ")"
+    local srcStr   = (d.source ~= "" and d.source ~= "Unknown") and d.source or "unknown"
+    local itemStr  = (d.link and d.link ~= "") and d.link or "an item"
+    local ilvlStr  = d.ilvl > 0 and (" (ilvl " .. d.ilvl .. ")") or ""
+    local countStr = d.count .. (d.count == 1 and " item" or " items")
 
     local line = "|cffff4444[GearCore]|r " .. nameStr .. " " .. lvlCl
         .. " died to " .. srcStr .. " in " .. d.zone
-        .. ", losing " .. itemStr .. ilvlStr
+        .. ", losing " .. countStr .. ", including: " .. itemStr .. ilvlStr
 
     if GearCore.GetSetting("showDeathPopup") then
         print(line)
     end
 
     if GearCore.GetSetting("showDeathWarning") then
-        local plain = d.name .. " died to " .. srcStr .. " in " .. d.zone
+        local plain = d.name .. " lost " .. countStr .. ", including: "
+            .. (d.link and d.link ~= "" and d.link or "an item") .. ilvlStr
         RaidNotice_AddMessage(RaidWarningFrame, plain, ChatTypeInfo["RAID_WARNING"])
     end
 end
@@ -158,6 +162,7 @@ function GearCoreBroadcast.SimulateDeath()
         source = fakeSources[math.random(#fakeSources)],
         link   = fakeLink,
         ilvl   = math.random(30, 70),
+        count  = math.random(1, 8),
     }
 
     seenKeys[d.name .. d.link] = nil  -- clear dedup so the message always shows
