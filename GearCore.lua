@@ -321,7 +321,11 @@ SLASH_GEARCORE2 = "/gc"
 SlashCmdList["GEARCORE"] = function(msg)
     if msg == "test" then
         print("|cffff4444GearCore:|r Simulating death...")
+        wipe(combatSnapshot)
         OnPlayerDead()
+    elseif msg == "broadcast" then
+        print("|cffff4444GearCore:|r Simulating incoming death broadcast...")
+        GearCoreBroadcast.SimulateDeath()
     else
         GearCoreOptions.Toggle()
     end

@@ -11,7 +11,6 @@ local cursorArmed = false
 local processingTicker
 local statusUpdateTicker
 local savedBtnX, savedBtnY   -- button screen coords saved before hiding
-local autoDeleteActive = false
 local GetDeletePopupFrame
 -- Forward declarations so functions defined later are upvalues, not nil global lookups
 local FinishQueue
@@ -91,17 +90,6 @@ local function BuildFrame()
     f.deleteBtn = btn
     btn:Hide()
 
-    local autoBtn = CreateFrame("Button", "GearCoreAutoDeleteButton", f, "UIPanelButtonTemplate")
-    autoBtn:SetSize(160, 32)
-    autoBtn:SetPoint("TOP", btn, "BOTTOM", 0, -4)
-    autoBtn:SetText("DELETE ALL")
-    autoBtn:SetScript("OnClick", function()
-        autoDeleteActive = true
-        GearCoreUI.ExecuteDeletion()
-    end)
-    f.autoBtn = autoBtn
-    autoBtn:Hide()
-
     -- No close button — the deletion window must not be dismissable.
     -- Use the recovery button in /gearcore options if the window needs to be reopened.
 
@@ -138,7 +126,6 @@ local function RefreshButtonState()
             f.statusMsg:SetText("Resurrect to begin deleting items")
         end
         f.deleteBtn:Hide()
-        if f.autoBtn then f.autoBtn:Hide() end
         return
     end
 
@@ -146,11 +133,10 @@ local function RefreshButtonState()
 
     if #pendingItems == 0 then
         f.deleteBtn:Hide()
-        if f.autoBtn then f.autoBtn:Hide() end
         return
     end
 
-    -- Keep buttons hidden during any active processing step.
+    -- Keep button hidden during any active processing step.
     if processingTicker or CursorHasItem() or GetDeletePopupFrame() then
         return
     end
@@ -158,7 +144,6 @@ local function RefreshButtonState()
     f.deleteBtn:SetText("DELETE NEXT")
     f.deleteBtn:Enable()
     f.deleteBtn:Show()
-    if f.autoBtn then f.autoBtn:Enable(); f.autoBtn:Show() end
 end
 
 local function StartStatusUpdateTicker()
@@ -444,7 +429,6 @@ end
 FinishQueue = function()
     awaitingConfirmation = false
     cursorArmed = false
-    autoDeleteActive = false
     StopProcessingTicker()
     StopStatusUpdateTicker()
     SyncPendingDeletionDB()
@@ -454,7 +438,6 @@ FinishQueue = function()
         print("|cffff4444GearCore:|r Deletion complete — all marked items processed.")
         if deleteFrame then
             deleteFrame.deleteBtn:Hide()
-            if deleteFrame.autoBtn then deleteFrame.autoBtn:Hide() end
             deleteFrame:Hide()
         end
         return
@@ -474,20 +457,11 @@ RemoveFirstPendingItem = function()
     StopStatusUpdateTicker()
 
     if #pendingItems == 0 then
-        autoDeleteActive = false
         print("|cffff4444GearCore:|r Deletion complete — all marked items processed.")
         if deleteFrame then
             deleteFrame.deleteBtn:Hide()
-            if deleteFrame.autoBtn then deleteFrame.autoBtn:Hide() end
             deleteFrame:Hide()
         end
-        return
-    end
-
-    if autoDeleteActive then
-        C_Timer.After(0.1, function()
-            GearCoreUI.ExecuteDeletion()
-        end)
         return
     end
 
@@ -498,7 +472,6 @@ RemoveFirstPendingItem = function()
         f.deleteBtn:Enable()
         f.deleteBtn:Show()
     end
-    if f.autoBtn then f.autoBtn:Enable(); f.autoBtn:Show() end
     StartStatusUpdateTicker()
 end
 
@@ -520,7 +493,6 @@ local function HideProcessingFrame()
     if deleteFrame and deleteFrame.deleteBtn then
         savedBtnX, savedBtnY = deleteFrame.deleteBtn:GetCenter()
         deleteFrame.deleteBtn:Hide()
-        if deleteFrame.autoBtn then deleteFrame.autoBtn:Hide() end
     end
 end
 
@@ -543,23 +515,6 @@ local function BeginProcessingMonitor()
             if not popupWasSeen then
                 popupWasSeen = true
                 PositionDeletePopup()
-                if autoDeleteActive then
-                    C_Timer.After(0.05, function()
-                        local p = GetDeletePopupFrame()
-                        if not p then return end
-                        if p.editBox then
-                            p.editBox:SetText(DELETE or "DELETE")
-                            if p.editBox:GetScript("OnTextChanged") then
-                                p.editBox:GetScript("OnTextChanged")(p.editBox, true)
-                            end
-                        end
-                        if StaticPopup_OnClick then
-                            StaticPopup_OnClick(p, 1)
-                        elseif p.button1 then
-                            p.button1:Click()
-                        end
-                    end)
-                end
             end
             return
         end

@@ -141,6 +141,29 @@ f:SetScript("OnEvent", function(_, event, ...)
     end
 end)
 
+-- ── Test ─────────────────────────────────────────────────────────────────────
+
+function GearCoreBroadcast.SimulateDeath()
+    local fakeClasses = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "MAGE", "WARLOCK", "DRUID" }
+    local fakeNames   = { "Thorvald", "Griselda", "Mortax", "Lunara", "Zephyra", "Drakthar" }
+    local fakeSources = { "Hogger", "Defias Rogue", "Murloc Coastrunner", "Scarlet Crusader", "Onyxia", "falling" }
+    -- A real-looking blue item link (Brutality Blade, item 18832)
+    local fakeLink    = "|cff0070dd|Hitem:18832:0:0:0:0:0:0:0:60|h[Brutality Blade]|h|r"
+
+    local d = {
+        name   = fakeNames[math.random(#fakeNames)],
+        class  = fakeClasses[math.random(#fakeClasses)],
+        level  = math.random(20, 60),
+        zone   = GetZoneText() or "Elwynn Forest",
+        source = fakeSources[math.random(#fakeSources)],
+        link   = fakeLink,
+        ilvl   = math.random(30, 70),
+    }
+
+    seenKeys[d.name .. d.link] = nil  -- clear dedup so the message always shows
+    Display(d)
+end
+
 -- Called by GearCore.lua after settings are initialized.
 -- Defers the channel join to PLAYER_LOGIN so the UI is fully ready.
 function GearCoreBroadcast.Init()
