@@ -1,12 +1,12 @@
--- GearCoreBroadcast: Announces death penalties to other GearCore players via a shared channel.
--- Message format: GCDEATH~name~class~level~zone~source~itemLink~ilvl~count
+-- RustcoreBroadcast: Announces death penalties to other Rustcore players via a shared channel.
+-- Message format: RCDEATH~name~class~level~zone~source~itemLink~ilvl~count
 -- Init() is called by GearCore.lua on ADDON_LOADED; it defers the channel join to PLAYER_LOGIN.
 
-GearCoreBroadcast = {}
+RustcoreBroadcast = {}
 
-local CHANNEL_NAME = "gearcorechannel"
-local CHANNEL_PASS = "gcbc1"
-local PREFIX       = "GCDEATH"
+local CHANNEL_NAME = "rustcorechannel"
+local CHANNEL_PASS = "rcbc1"
+local PREFIX       = "RCDEATH"
 local DELIM        = "~"
 
 local channelNum = nil
@@ -63,8 +63,8 @@ local function Send(markedItems, deathSource)
     SendChatMessage(msg, "CHANNEL", nil, channelNum)
 end
 
-function GearCoreBroadcast.Announce(markedItems, deathSource)
-    if not GearCore.GetSetting("broadcastDeaths") then return end
+function RustcoreBroadcast.Announce(markedItems, deathSource)
+    if not Rustcore.GetSetting("broadcastDeaths") then return end
     RefreshChannelNum()
     if channelNum then
         Send(markedItems, deathSource)
@@ -106,15 +106,15 @@ local function Display(d)
     local itemStr  = (d.link and d.link ~= "") and d.link or "an item"
     local countStr = d.count .. (d.count == 1 and " item" or " items")
 
-    local line = "|cffff4444[GearCore]|r " .. nameStr .. " " .. lvlCl
+    local line = "|cffff4444[Rustcore]|r " .. nameStr .. " " .. lvlCl
         .. " died to " .. srcStr .. " in " .. d.zone
         .. ", losing " .. countStr .. ", including: " .. itemStr
 
-    if GearCore.GetSetting("showDeathPopup") then
+    if Rustcore.GetSetting("showDeathPopup") then
         print(line)
     end
 
-    if GearCore.GetSetting("showDeathWarning") then
+    if Rustcore.GetSetting("showDeathWarning") then
         local plain = d.name .. " just lost " .. countStr .. " items, including " .. itemStr .. "."
         RaidNotice_AddMessage(RaidWarningFrame, plain, ChatTypeInfo["RAID_WARNING"])
     end
@@ -145,11 +145,10 @@ end)
 
 -- ── Test ─────────────────────────────────────────────────────────────────────
 
-function GearCoreBroadcast.SimulateDeath()
+function RustcoreBroadcast.SimulateDeath()
     local fakeClasses = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "MAGE", "WARLOCK", "DRUID" }
     local fakeNames   = { "Thorvald", "Griselda", "Mortax", "Lunara", "Zephyra", "Drakthar" }
     local fakeSources = { "Hogger", "Defias Rogue", "Murloc Coastrunner", "Scarlet Crusader", "Onyxia", "falling" }
-    -- A real-looking blue item link (Brutality Blade, item 18832)
     local fakeLink    = "|cff0070dd|Hitem:18832:0:0:0:0:0:0:0:60|h[Brutality Blade]|h|r"
 
     local d = {
@@ -163,13 +162,11 @@ function GearCoreBroadcast.SimulateDeath()
         count  = math.random(1, 8),
     }
 
-    seenKeys[d.name .. d.link] = nil  -- clear dedup so the message always shows
+    seenKeys[d.name .. d.link] = nil
     Display(d)
 end
 
--- Called by GearCore.lua after settings are initialized.
--- Defers the channel join to PLAYER_LOGIN so the UI is fully ready.
-function GearCoreBroadcast.Init()
+function RustcoreBroadcast.Init()
     local initFrame = CreateFrame("Frame")
     initFrame:RegisterEvent("PLAYER_LOGIN")
     initFrame:SetScript("OnEvent", function(self)

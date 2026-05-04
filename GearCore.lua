@@ -1,17 +1,17 @@
--- GearCore: Hardcore gear-loss addon for WoW Classic
+-- Rustcore: Hardcore gear-loss addon for WoW Classic
 -- Records equipped items at combat entry to prevent unequip-before-death cheating.
 -- On death, marks a subset of items for deletion based on difficulty setting.
 
-GearCoreDB = GearCoreDB or {}
+RustcoreDB = RustcoreDB or {}
 
-GearCore = {}
+Rustcore = {}
 
 local defaults = {
-    difficulty      = 2,     -- 1=Lite, 2=Difficult, 3=Extreme
+    difficulty      = 2,     -- 1=Lite, 2=Normal, 3=Hard, 4=Brutal, 5=Extreme
     selfFound       = false, -- block mailbox / AH / trade
-    blockRepair     = false, -- disable merchant repair buttons
+    allowRepair     = false, -- if false (default), repair is blocked
     keepMainWeapon  = false, -- spare main weapon slot from deletion
-    broadcastDeaths = true,  -- broadcast death to GearCore channel
+    broadcastDeaths = true,  -- broadcast death to Rustcore channel
     showDeathPopup  = true,  -- show popup notification for other players' deaths
     showDeathWarning= false, -- show center-screen warning for other players' deaths
 }
@@ -29,22 +29,27 @@ local lastDeathSource = nil  -- last attacker/environment that hit the player
 
 -- ── Settings ──────────────────────────────────────────────────────────────────
 
-function GearCore.GetSetting(key)
-    if GearCoreDB[key] == nil then
-        GearCoreDB[key] = defaults[key]
+function Rustcore.GetSetting(key)
+    if RustcoreDB[key] == nil then
+        RustcoreDB[key] = defaults[key]
     end
-    return GearCoreDB[key]
+    return RustcoreDB[key]
 end
 
-function GearCore.SetSetting(key, value)
-    GearCoreDB[key] = value
+function Rustcore.SetSetting(key, value)
+    RustcoreDB[key] = value
 end
 
 local function InitSettings()
     for k, v in pairs(defaults) do
-        if GearCoreDB[k] == nil then
-            GearCoreDB[k] = v
+        if RustcoreDB[k] == nil then
+            RustcoreDB[k] = v
         end
+    end
+    -- Migrate old blockRepair key to allowRepair
+    if RustcoreDB.blockRepair ~= nil and RustcoreDB.allowRepair == nil then
+        RustcoreDB.allowRepair = not RustcoreDB.blockRepair
+        RustcoreDB.blockRepair = nil
     end
 end
 
@@ -55,13 +60,12 @@ local function GetMainWeaponSlot()
     if class == "HUNTER" then
         return 18  -- ranged weapon
     elseif WAND_CLASSES[class] then
-        -- Use wand if equipped, otherwise mainhand
         if GetInventoryItemLink("player", 18) then
             return 18
         end
         return 16
     else
-        return 16  -- mainhand for all melee classes
+        return 16
     end
 end
 
@@ -69,7 +73,7 @@ end
 
 local function TakeSnapshot()
     wipe(combatSnapshot)
-    local skipSlot = GearCore.GetSetting("keepMainWeapon") and GetMainWeaponSlot() or nil
+    local skipSlot = Rustcore.GetSetting("keepMainWeapon") and GetMainWeaponSlot() or nil
     for _, slotId in ipairs(GEAR_SLOTS) do
         if slotId ~= skipSlot then
             local link = GetInventoryItemLink("player", slotId)
@@ -98,23 +102,37 @@ local function BuildMarkedItems(source)
     wipe(markedItems)
     if #source == 0 then return end
 
-    local difficulty = GearCore.GetSetting("difficulty")
+    local difficulty = Rustcore.GetSetting("difficulty")
 
     if difficulty == 1 then
-        -- Lite: lose 1 random item
-        markedItems[1] = source[math.random(#source)]
+        -- Lite: repair is blocked, no items lost
+        return
 
     elseif difficulty == 2 then
-        -- Difficult: lose half your equipped items, rounded up
+        -- Normal: lose 1 random item
+        markedItems[1] = source[math.random(#source)]
+
+    elseif difficulty == 3 then
+        -- Hard: lose 25% rounded up
         local pool = {}
         for _, item in ipairs(source) do pool[#pool+1] = item end
         ShuffleInPlace(pool)
-        local loseCount = math.ceil(#pool / 2)
+        local loseCount = math.ceil(#pool * 0.25)
         for i = 1, loseCount do
             markedItems[#markedItems+1] = pool[i]
         end
 
-    elseif difficulty == 3 then
+    elseif difficulty == 4 then
+        -- Brutal: lose 50% rounded up
+        local pool = {}
+        for _, item in ipairs(source) do pool[#pool+1] = item end
+        ShuffleInPlace(pool)
+        local loseCount = math.ceil(#pool * 0.50)
+        for i = 1, loseCount do
+            markedItems[#markedItems+1] = pool[i]
+        end
+
+    elseif difficulty == 5 then
         -- Extreme: lose everything
         for _, item in ipairs(source) do
             markedItems[#markedItems+1] = item
@@ -123,42 +141,46 @@ local function BuildMarkedItems(source)
 end
 
 local function OnPlayerDead()
-    print("|cffff4444GearCore DEBUG:|r OnPlayerDead called.")
+    print("|cffff4444Rustcore DEBUG:|r OnPlayerDead called.")
     local ok, err = pcall(function()
         local source = (#combatSnapshot > 0) and combatSnapshot or nil
-        print("|cffff4444GearCore DEBUG:|r snapshot=" .. #combatSnapshot)
+        print("|cffff4444Rustcore DEBUG:|r snapshot=" .. #combatSnapshot)
         if not source then
             TakeSnapshot()
             source = combatSnapshot
-            print("|cffff4444GearCore DEBUG:|r fallback snapshot=" .. #source)
+            print("|cffff4444Rustcore DEBUG:|r fallback snapshot=" .. #source)
         end
 
         BuildMarkedItems(source)
-        print("|cffff4444GearCore DEBUG:|r marked=" .. #markedItems)
+        print("|cffff4444Rustcore DEBUG:|r marked=" .. #markedItems)
 
         if #markedItems > 0 then
-            GearCoreDB.pendingDeletion = {}
+            RustcoreDB.pendingDeletion = {}
             for _, item in ipairs(markedItems) do
-                GearCoreDB.pendingDeletion[#GearCoreDB.pendingDeletion+1] = {
+                RustcoreDB.pendingDeletion[#RustcoreDB.pendingDeletion+1] = {
                     slot = item.slot, link = item.link, name = item.name,
                 }
             end
-            GearCoreDB.lastDeathSource = lastDeathSource
-            GearCoreBroadcast.Announce(markedItems, lastDeathSource)
-            GearCoreUI.ShowDeletionFrame(markedItems)
+            RustcoreDB.lastDeathSource = lastDeathSource
+            RustcoreBroadcast.Announce(markedItems, lastDeathSource)
+            RustcoreUI.ShowDeletionFrame(markedItems)
         else
-            print("|cffff4444GearCore:|r No items marked for deletion.")
+            if Rustcore.GetSetting("difficulty") == 1 then
+                print("|cffff4444Rustcore:|r Lite mode — no items lost.")
+            else
+                print("|cffff4444Rustcore:|r No items marked for deletion.")
+            end
         end
     end)
     if not ok then
-        print("|cffff4444GearCore ERROR:|r " .. tostring(err))
+        print("|cffff4444Rustcore ERROR:|r " .. tostring(err))
     end
 end
 
 -- ── Merchant repair blocking ──────────────────────────────────────────────────
 
 local function ApplyRepairBlock()
-    if GearCore.GetSetting("blockRepair") then
+    if not Rustcore.GetSetting("allowRepair") then
         if MerchantRepairAllButton  then MerchantRepairAllButton:Disable();  MerchantRepairAllButton:SetAlpha(0.35)  end
         if MerchantRepairItemButton then MerchantRepairItemButton:Disable(); MerchantRepairItemButton:SetAlpha(0.35) end
     end
@@ -186,21 +208,18 @@ eventFrame:RegisterEvent("MERCHANT_CLOSED")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
-        if (...) == "GearCore" then
+        if (...) == "GearCore" or (...) == "Rustcore" then
             InitSettings()
-            GearCoreBroadcast.Init()
-            print("|cffff4444GearCore|r loaded. |cffffd700/gearcore|r for options.")
+            RustcoreBroadcast.Init()
+            print("|cffff4444Rustcore|r loaded. |cffffd700/rustcore|r for options.")
 
-            -- Handle pending deletions from a previous session (player logged out while dead).
-            if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
+            if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then
                 if UnitIsDeadOrGhost("player") then
-                    -- Still dead/ghost: show the window, wait for PLAYER_UNGHOST to fire.
-                    GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
+                    RustcoreUI.ShowDeletionFrame(RustcoreDB.pendingDeletion)
                 else
-                    -- Logged in alive (soulstone, rez'd before logout, etc.).
-                    print("|cffff4444GearCore:|r Pending death penalty detected — open the GearCore window and click to process each item.")
+                    print("|cffff4444Rustcore:|r Pending death penalty detected — open the Rustcore window and click to process each item.")
                     C_Timer.After(1, function()
-                        GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
+                        RustcoreUI.ShowDeletionFrame(RustcoreDB.pendingDeletion)
                     end)
                 end
             end
@@ -210,60 +229,56 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         TakeSnapshot()
 
     elseif event == "PLAYER_REGEN_ENABLED" then
-        -- Clear snapshot when leaving combat alive so stale data isn't used later
         if not isDead then
             wipe(combatSnapshot)
             lastDeathSource = nil
         end
 
     elseif event == "PLAYER_DEAD" then
-        print("|cffff4444GearCore DEBUG:|r PLAYER_DEAD event received.")
+        print("|cffff4444Rustcore DEBUG:|r PLAYER_DEAD event received.")
         isDead = true
         OnPlayerDead()
 
     elseif event == "PLAYER_ALIVE" then
-        -- Fires on release-spirit (player is still a ghost) AND on battle-rez (fully alive).
-        -- Only trigger deletion here for the battle-rez case; spirit-healer uses PLAYER_UNGHOST.
         isDead = false
         wipe(combatSnapshot)
         wipe(markedItems)
         lastDeathSource = nil
 
         if not UnitIsDeadOrGhost("player") then
-            if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
-                print("|cffff4444GearCore:|r Resurrection detected — click the GearCore button to process your pending deletions.")
+            if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then
+                print("|cffff4444Rustcore:|r Resurrection detected — click the Rustcore button to process your pending deletions.")
                 C_Timer.After(1, function()
-                    GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
+                    RustcoreUI.ShowDeletionFrame(RustcoreDB.pendingDeletion)
                 end)
             end
         end
 
     elseif event == "PLAYER_UNGHOST" then
-        -- Guard: fires on zone changes while still in ghost form — only proceed when fully alive.
         if UnitIsDeadOrGhost("player") then return end
-        if GearCoreDB.pendingDeletion and #GearCoreDB.pendingDeletion > 0 then
-            print("|cffff4444GearCore:|r Resurrection detected — click the GearCore button to process your pending deletions.")
+        if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then
+            print("|cffff4444Rustcore:|r Resurrection detected — click the Rustcore button to process your pending deletions.")
             C_Timer.After(1, function()
-                GearCoreUI.ShowDeletionFrame(GearCoreDB.pendingDeletion)
+                RustcoreUI.ShowDeletionFrame(RustcoreDB.pendingDeletion)
             end)
         end
 
     elseif event == "MAIL_SHOW" then
-        if GearCore.GetSetting("selfFound") then
+        if Rustcore.GetSetting("selfFound") then
             C_Timer.After(0, function() HideUIPanel(MailFrame) end)
-            print("|cffff4444GearCore:|r Mailbox blocked (Self-Found mode).")
+            print("|cffff4444Rustcore:|r Mailbox blocked (Self-Found mode).")
         end
 
     elseif event == "AUCTION_HOUSE_SHOW" then
-        if GearCore.GetSetting("selfFound") then
+        if Rustcore.GetSetting("selfFound") then
             C_Timer.After(0, function() HideUIPanel(AuctionFrame) end)
-            print("|cffff4444GearCore:|r Auction House blocked (Self-Found mode).")
+            print("|cffff4444Rustcore:|r Auction House blocked (Self-Found mode).")
         end
 
     elseif event == "TRADE_SHOW" then
-        if GearCore.GetSetting("selfFound") then
+        if Rustcore.GetSetting("selfFound") then
             C_Timer.After(0, function() CloseTrade() end)
-            print("|cffff4444GearCore:|r Trading blocked (Self-Found mode).")
+            print("|cffff4444Rustcore:|r Trading blocked (Self-Found mode).")
         end
 
     elseif event == "MERCHANT_SHOW" then
@@ -274,11 +289,11 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "CHAT_MSG_ADDON" then
         local prefix, message, distribution, sender = ...
-        GearCoreBroadcast.OnAddonMessage(prefix, message, distribution, sender)
+        RustcoreBroadcast.OnAddonMessage(prefix, message, distribution, sender)
     end
 end)
 
--- ── Combat log — isolated frame so errors here can't kill PLAYER_DEAD ────────
+-- ── Combat log ────────────────────────────────────────────────────────────────
 do
     local playerGUID
     local clFrame = CreateFrame("Frame")
@@ -289,7 +304,6 @@ do
             playerGUID = UnitGUID("player")
             return
         end
-        -- COMBAT_LOG_EVENT_UNFILTERED
         local _, subEv, _, _, srcName, _, _, dstGUID = CombatLogGetCurrentEventInfo()
         if not subEv or dstGUID ~= playerGUID then return end
         if subEv == "ENVIRONMENTAL_DAMAGE" then
@@ -301,13 +315,11 @@ do
 end
 
 -- ── Block auto-repair from other addons ──────────────────────────────────────
--- Disabling the UI buttons only stops clicks; other addons call RepairAllItems()
--- directly. Wrapping the global function intercepts all callers.
 do
     local _orig = RepairAllItems
     RepairAllItems = function(guildBank)
-        if GearCore.GetSetting("blockRepair") then
-            print("|cffff4444GearCore:|r Repair blocked.")
+        if not Rustcore.GetSetting("allowRepair") then
+            print("|cffff4444Rustcore:|r Repair blocked.")
             return
         end
         return _orig(guildBank)
@@ -316,17 +328,17 @@ end
 
 -- ── Slash commands ────────────────────────────────────────────────────────────
 
-SLASH_GEARCORE1 = "/gearcore"
-SLASH_GEARCORE2 = "/gc"
-SlashCmdList["GEARCORE"] = function(msg)
+SLASH_RUSTCORE1 = "/rustcore"
+SLASH_RUSTCORE2 = "/rc"
+SlashCmdList["RUSTCORE"] = function(msg)
     if msg == "test" then
-        print("|cffff4444GearCore:|r Simulating death...")
+        print("|cffff4444Rustcore:|r Simulating death...")
         wipe(combatSnapshot)
         OnPlayerDead()
     elseif msg == "broadcast" then
-        print("|cffff4444GearCore:|r Simulating incoming death broadcast...")
-        GearCoreBroadcast.SimulateDeath()
+        print("|cffff4444Rustcore:|r Simulating incoming death broadcast...")
+        RustcoreBroadcast.SimulateDeath()
     else
-        GearCoreOptions.Toggle()
+        RustcoreOptions.Toggle()
     end
 end

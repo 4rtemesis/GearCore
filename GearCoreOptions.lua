@@ -1,28 +1,29 @@
--- GearCore: Options window
--- Accessible via /gearcore or /gc
+-- Rustcore: Options window
+-- Accessible via /rustcore or /rc
 
-GearCoreOptions = {}
+RustcoreOptions = {}
 
 local optFrame
 
-local DIFF_LABELS = { [1]="Lite", [2]="Difficult", [3]="Extreme" }
+local DIFF_LABELS = { [1]="Lite", [2]="Normal", [3]="Hard", [4]="Brutal", [5]="Extreme" }
 local DIFF_DESCS  = {
-    [1] = "Lose 1 random equipped item on death.",
-    [2] = "Lose half your equipped items at random, rounded up.",
-    [3] = "Lose every equipped item on death.",
+    [1] = "Only repair is blocked. No items are lost on death.",
+    [2] = "Lose 1 random equipped item on death.",
+    [3] = "Lose 25% of your equipped items on death (rounded up).",
+    [4] = "Lose 50% of your equipped items on death (rounded up).",
+    [5] = "Lose every equipped item on death.",
 }
 
--- See GearCoreUI.lua for explanation of this pattern.
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
 
 local function ApplyDifficultyValue(slider, diffDesc, value)
-    local v = math.max(1, math.min(3, math.floor(value + 0.5)))
+    local v = math.max(1, math.min(5, math.floor(value + 0.5)))
     if math.abs((slider:GetValue() or v) - v) > 0.001 then
         slider:SetValue(v)
         return
     end
 
-    GearCore.SetSetting("difficulty", v)
+    Rustcore.SetSetting("difficulty", v)
     local txt = _G[slider:GetName().."Text"]
     if txt then txt:SetText(DIFF_LABELS[v]) end
     diffDesc:SetText(DIFF_DESCS[v])
@@ -54,11 +55,11 @@ local function MakeCheckbox(parent, labelText, tooltipText, anchorTo, yOff, sett
     end
 
     cb:SetScript("OnClick", function(self)
-        GearCore.SetSetting(settingKey, self:GetChecked() and true or false)
+        Rustcore.SetSetting(settingKey, self:GetChecked() and true or false)
     end)
 
     cb.Refresh = function()
-        cb:SetChecked(GearCore.GetSetting(settingKey))
+        cb:SetChecked(Rustcore.GetSetting(settingKey))
     end
 
     return cb
@@ -67,8 +68,8 @@ end
 -- ── Frame construction ────────────────────────────────────────────────────────
 
 local function BuildOptionsFrame()
-    local f = CreateFrame("Frame", "GearCoreOptionsFrame", UIParent, backdropTemplate)
-    f:SetSize(390, 570)
+    local f = CreateFrame("Frame", "RustcoreOptionsFrame", UIParent, backdropTemplate)
+    f:SetSize(390, 590)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetMovable(true)
@@ -83,7 +84,7 @@ local function BuildOptionsFrame()
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -16)
-    title:SetText("|cffff4444GearCore|r Options")
+    title:SetText("|cffff4444Rustcore|r Options")
 
     local dragHandle = CreateFrame("Frame", nil, f)
     dragHandle:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -10)
@@ -91,12 +92,8 @@ local function BuildOptionsFrame()
     dragHandle:SetHeight(28)
     dragHandle:EnableMouse(true)
     dragHandle:RegisterForDrag("LeftButton")
-    dragHandle:SetScript("OnDragStart", function()
-        f:StartMoving()
-    end)
-    dragHandle:SetScript("OnDragStop", function()
-        f:StopMovingOrSizing()
-    end)
+    dragHandle:SetScript("OnDragStart", function() f:StartMoving() end)
+    dragHandle:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
@@ -106,13 +103,11 @@ local function BuildOptionsFrame()
     diffHeader:SetPoint("TOPLEFT", f, "TOPLEFT", 24, -52)
     diffHeader:SetText("Difficulty Mode")
 
-    -- Three-step slider (1=Lite, 2=Difficult, 3=Extreme)
-    local slider = CreateFrame("Slider", "GearCoreDifficultySlider", f, "OptionsSliderTemplate")
-    -- Anchor to the frame center so the Low/High labels don't overflow the sides.
-    -- diffHeader stays as a visual label; slider position is independent.
+    -- Five-step slider (1=Lite, 2=Normal, 3=Hard, 4=Brutal, 5=Extreme)
+    local slider = CreateFrame("Slider", "RustcoreDifficultySlider", f, "OptionsSliderTemplate")
     slider:SetPoint("TOP", f, "TOP", 0, -90)
     slider:SetWidth(300)
-    slider:SetMinMaxValues(1, 3)
+    slider:SetMinMaxValues(1, 5)
     slider:SetValueStep(1)
 
     local sliderTrack = CreateFrame("Frame", nil, f, backdropTemplate)
@@ -128,8 +123,6 @@ local function BuildOptionsFrame()
     sliderTrack:SetBackdropColor(0.08, 0.08, 0.08, 0.9)
     sliderTrack:SetBackdropBorderColor(0.72, 0.58, 0.18, 0.95)
 
-    -- OptionsSliderTemplate creates these child globals; guard in case the client
-    -- uses a different template variant where the names don't match.
     local sliderLow  = _G[slider:GetName().."Low"]
     local sliderHigh = _G[slider:GetName().."High"]
     local sliderText = _G[slider:GetName().."Text"]
@@ -143,25 +136,21 @@ local function BuildOptionsFrame()
         sliderHigh:ClearAllPoints()
         sliderHigh:SetPoint("TOPRIGHT", sliderTrack, "BOTTOMRIGHT", 2, -6)
     end
-    local sliderMid = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    sliderMid:SetPoint("TOP", sliderTrack, "BOTTOM", 0, -6)
-    sliderMid:SetTextColor(0.82, 0.82, 0.82)
-    sliderMid:SetText("Difficult")
     if sliderText then
-        sliderText:SetText(DIFF_LABELS[GearCore.GetSetting("difficulty")])
+        sliderText:SetText(DIFF_LABELS[Rustcore.GetSetting("difficulty")])
         sliderText:ClearAllPoints()
         sliderText:SetPoint("BOTTOMLEFT", sliderTrack, "TOPLEFT", 0, 12)
         sliderText:SetJustifyH("LEFT")
         sliderText:SetWidth(284)
     end
-    f.sliderText = sliderText  -- save ref for OnShow refresh
+    f.sliderText = sliderText
 
     local diffDesc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     diffDesc:SetPoint("TOPLEFT", sliderTrack, "BOTTOMLEFT", 16, -28)
     diffDesc:SetWidth(284)
     diffDesc:SetJustifyH("LEFT")
     diffDesc:SetTextColor(1, 0.82, 0)
-    diffDesc:SetText(DIFF_DESCS[GearCore.GetSetting("difficulty")])
+    diffDesc:SetText(DIFF_DESCS[Rustcore.GetSetting("difficulty")])
 
     slider:SetScript("OnValueChanged", function(self, value)
         ApplyDifficultyValue(self, diffDesc, value)
@@ -169,7 +158,7 @@ local function BuildOptionsFrame()
     slider:SetScript("OnMouseUp", function(self)
         ApplyDifficultyValue(self, diffDesc, self:GetValue())
     end)
-    slider:SetValue(GearCore.GetSetting("difficulty"))
+    slider:SetValue(Rustcore.GetSetting("difficulty"))
 
     f.diffSlider = slider
     f.diffDesc   = diffDesc
@@ -184,15 +173,10 @@ local function BuildOptionsFrame()
         "Blocks access to the mailbox, auction house, and player trading.",
         sfHeader, -8, "selfFound")
 
-    local cbRepair = MakeCheckbox(f,
-        "Block Item Repair",
-        "Disables the Repair All and Repair Item buttons at merchants.",
-        cbSelfFound, -8, "blockRepair")
-
-    -- ── Weapon exception section ──────────────────────────────────────────────
-    local wpnHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    wpnHeader:SetPoint("TOPLEFT", cbRepair, "BOTTOMLEFT", 0, -18)
-    wpnHeader:SetText("Weapon Exception")
+    -- ── Exceptions section ────────────────────────────────────────────────────
+    local excHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    excHeader:SetPoint("TOPLEFT", cbSelfFound, "BOTTOMLEFT", 0, -18)
+    excHeader:SetText("Exceptions")
 
     local cbWeapon = MakeCheckbox(f,
         "Keep Main Weapon",
@@ -200,32 +184,36 @@ local function BuildOptionsFrame()
         .."Hunter: Ranged slot\n"
         .."Melee (Warrior/Paladin/Rogue/Shaman/Druid): Main Hand\n"
         .."Caster (Priest/Mage/Warlock): Wand if equipped, else Main Hand",
-        wpnHeader, -8, "keepMainWeapon")
+        excHeader, -8, "keepMainWeapon")
 
-    -- Weapon note
-    local wpnNote = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    wpnNote:SetPoint("TOPLEFT", cbWeapon, "BOTTOMLEFT", 30, -4)
-    wpnNote:SetTextColor(0.7, 0.7, 0.7)
-    wpnNote:SetText("Applies to the Lite, Difficult, and Extreme modes.")
+    local cbRepair = MakeCheckbox(f,
+        "Allow Item Repair",
+        "Allows repair at merchants. By default repair is always blocked.",
+        cbWeapon, -8, "allowRepair")
+
+    local excNote = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    excNote:SetPoint("TOPLEFT", cbRepair, "BOTTOMLEFT", 30, -4)
+    excNote:SetTextColor(0.7, 0.7, 0.7)
+    excNote:SetText("Applies to all difficulty modes.")
 
     -- ── Death broadcast section ───────────────────────────────────────────────
     local bcHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    bcHeader:SetPoint("TOPLEFT", wpnNote, "BOTTOMLEFT", -30, -22)
+    bcHeader:SetPoint("TOPLEFT", excNote, "BOTTOMLEFT", -30, -22)
     bcHeader:SetText("Death Broadcast")
 
     local cbBroadcast = MakeCheckbox(f,
         "Broadcast My Death",
-        "Announces your death and the item you lost to other GearCore users\nvia a shared addon channel.",
+        "Announces your death and the item you lost to other Rustcore users\nvia a shared addon channel.",
         bcHeader, -8, "broadcastDeaths")
 
     local cbShowPopup = MakeCheckbox(f,
         "Show Death Popup",
-        "Display a popup notification when another GearCore player dies.",
+        "Display a popup notification when another Rustcore player dies.",
         cbBroadcast, -8, "showDeathPopup")
 
     local cbShowWarning = MakeCheckbox(f,
         "Show Center Warning",
-        "Display a center-screen raid warning when another GearCore player dies.",
+        "Display a center-screen raid warning when another Rustcore player dies.",
         cbShowPopup, -8, "showDeathWarning")
 
     -- ── Death penalty recovery ────────────────────────────────────────────────
@@ -238,31 +226,31 @@ local function BuildOptionsFrame()
     queueBtn:SetPoint("TOPLEFT", queueHeader, "BOTTOMLEFT", 0, -8)
     queueBtn:SetScript("OnClick", function()
         f:Hide()
-        GearCoreUI.ReopenDeletionFrame()
+        RustcoreUI.ReopenDeletionFrame()
     end)
     f.queueBtn = queueBtn
 
     -- Store refs for Refresh
-    f.cbSelfFound  = cbSelfFound
-    f.cbRepair     = cbRepair
-    f.cbWeapon     = cbWeapon
-    f.cbBroadcast  = cbBroadcast
-    f.cbShowPopup  = cbShowPopup
+    f.cbSelfFound   = cbSelfFound
+    f.cbWeapon      = cbWeapon
+    f.cbRepair      = cbRepair
+    f.cbBroadcast   = cbBroadcast
+    f.cbShowPopup   = cbShowPopup
     f.cbShowWarning = cbShowWarning
 
     f:SetScript("OnShow", function(self)
-        local v = GearCore.GetSetting("difficulty")
+        local v = Rustcore.GetSetting("difficulty")
         self.diffSlider:SetValue(v)
         if self.sliderText then self.sliderText:SetText(DIFF_LABELS[v]) end
         self.diffDesc:SetText(DIFF_DESCS[v])
         self.cbSelfFound:Refresh()
-        self.cbRepair:Refresh()
         self.cbWeapon:Refresh()
+        self.cbRepair:Refresh()
         self.cbBroadcast:Refresh()
         self.cbShowPopup:Refresh()
         self.cbShowWarning:Refresh()
 
-        local count = GearCoreUI.GetPendingCount()
+        local count = RustcoreUI.GetPendingCount()
         if count > 0 then
             self.queueBtn:SetText("Show Pending Deletions  (" .. count .. " items)")
             self.queueBtn:Enable()
@@ -278,7 +266,7 @@ end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
-function GearCoreOptions.Toggle()
+function RustcoreOptions.Toggle()
     if not optFrame then optFrame = BuildOptionsFrame() end
     if optFrame:IsShown() then
         optFrame:Hide()
@@ -287,7 +275,7 @@ function GearCoreOptions.Toggle()
     end
 end
 
-function GearCoreOptions.Hide()
+function RustcoreOptions.Hide()
     if optFrame and optFrame:IsShown() then
         optFrame:Hide()
     end
