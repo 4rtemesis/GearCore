@@ -1,5 +1,6 @@
 -- GearCoreBroadcast: Announces death penalties to other GearCore players via a shared channel.
 -- Message format: GCDEATH~name~class~level~zone~source~itemLink~ilvl
+-- Init() is called by GearCore.lua on ADDON_LOADED; it defers the channel join to PLAYER_LOGIN.
 
 GearCoreBroadcast = {}
 
@@ -62,18 +63,16 @@ local function Send(markedItems, deathSource)
 end
 
 function GearCoreBroadcast.Announce(markedItems, deathSource)
+    if not GearCore.GetSetting("broadcastDeaths") then return end
     RefreshChannelNum()
     if channelNum then
         Send(markedItems, deathSource)
         return
     end
-    -- Not in channel yet — join and retry once.
     JoinChannel()
     C_Timer.After(4, function()
         RefreshChannelNum()
-        if channelNum then
-            Send(markedItems, deathSource)
-        end
+        if channelNum then Send(markedItems, deathSource) end
     end)
 end
 
@@ -105,31 +104,35 @@ local function Display(d)
     local itemStr = (d.link and d.link ~= "") and d.link or "an item"
     local ilvlStr = d.ilvl > 0 and (" (ilvl " .. d.ilvl .. ")") or ""
 
-    print("|cffff4444[GearCore]|r " .. nameStr .. " " .. lvlCl
+    local line = "|cffff4444[GearCore]|r " .. nameStr .. " " .. lvlCl
         .. " died to " .. srcStr .. " in " .. d.zone
-        .. ", losing " .. itemStr .. ilvlStr)
+        .. ", losing " .. itemStr .. ilvlStr
+
+    if GearCore.GetSetting("showDeathPopup") then
+        print(line)
+    end
+
+    if GearCore.GetSetting("showDeathWarning") then
+        local plain = d.name .. " died to " .. srcStr .. " in " .. d.zone
+        RaidNotice_AddMessage(RaidWarningFrame, plain, ChatTypeInfo["RAID_WARNING"])
+    end
 end
 
 -- ── Events ────────────────────────────────────────────────────────────────────
 
 local f = CreateFrame("Frame")
-f:RegisterEvent("PLAYER_LOGIN")
 f:RegisterEvent("CHANNEL_UI_UPDATE")
 f:RegisterEvent("CHAT_MSG_CHANNEL")
 
 f:SetScript("OnEvent", function(_, event, ...)
-    if event == "PLAYER_LOGIN" then
-        JoinChannel()
-
-    elseif event == "CHANNEL_UI_UPDATE" then
+    if event == "CHANNEL_UI_UPDATE" then
         RefreshChannelNum()
 
     elseif event == "CHAT_MSG_CHANNEL" then
-        local msg, sender, _, _, _, _, _, _, chanBase = ...
+        local msg, _, _, _, _, _, _, _, chanBase = ...
         if chanBase and chanBase:lower() == CHANNEL_NAME then
             if msg:sub(1, #PREFIX) == PREFIX then
                 local d = Parse(msg)
-                -- Skip our own message — death is already shown locally.
                 if d and d.name ~= UnitName("player") then
                     Display(d)
                 end
@@ -137,3 +140,14 @@ f:SetScript("OnEvent", function(_, event, ...)
         end
     end
 end)
+
+-- Called by GearCore.lua after settings are initialized.
+-- Defers the channel join to PLAYER_LOGIN so the UI is fully ready.
+function GearCoreBroadcast.Init()
+    local initFrame = CreateFrame("Frame")
+    initFrame:RegisterEvent("PLAYER_LOGIN")
+    initFrame:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        JoinChannel()
+    end)
+end

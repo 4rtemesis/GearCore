@@ -68,7 +68,7 @@ end
 
 local function BuildOptionsFrame()
     local f = CreateFrame("Frame", "GearCoreOptionsFrame", UIParent, backdropTemplate)
-    f:SetSize(390, 455)
+    f:SetSize(390, 570)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetMovable(true)
@@ -208,14 +208,34 @@ local function BuildOptionsFrame()
     wpnNote:SetTextColor(0.7, 0.7, 0.7)
     wpnNote:SetText("Applies to the Lite, Difficult, and Extreme modes.")
 
+    -- ── Death broadcast section ───────────────────────────────────────────────
+    local bcHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    bcHeader:SetPoint("TOPLEFT", wpnNote, "BOTTOMLEFT", -30, -22)
+    bcHeader:SetText("Death Broadcast")
+
+    local cbBroadcast = MakeCheckbox(f,
+        "Broadcast My Death",
+        "Announces your death and the item you lost to other GearCore users\nvia a shared addon channel.",
+        bcHeader, -8, "broadcastDeaths")
+
+    local cbShowPopup = MakeCheckbox(f,
+        "Show Death Popup",
+        "Display a popup notification when another GearCore player dies.",
+        cbBroadcast, -8, "showDeathPopup")
+
+    local cbShowWarning = MakeCheckbox(f,
+        "Show Center Warning",
+        "Display a center-screen raid warning when another GearCore player dies.",
+        cbShowPopup, -8, "showDeathWarning")
+
     -- ── Death penalty recovery ────────────────────────────────────────────────
     local queueHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    queueHeader:SetPoint("TOPLEFT", wpnNote, "BOTTOMLEFT", -30, -22)
+    queueHeader:SetPoint("TOPLEFT", cbShowWarning, "BOTTOMLEFT", 0, -22)
     queueHeader:SetText("Death Penalty Queue")
 
     local queueBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     queueBtn:SetSize(300, 28)
-    queueBtn:SetPoint("TOP", f, "TOP", 0, -382)
+    queueBtn:SetPoint("TOPLEFT", queueHeader, "BOTTOMLEFT", 0, -8)
     queueBtn:SetScript("OnClick", function()
         f:Hide()
         GearCoreUI.ReopenDeletionFrame()
@@ -223,9 +243,12 @@ local function BuildOptionsFrame()
     f.queueBtn = queueBtn
 
     -- Store refs for Refresh
-    f.cbSelfFound = cbSelfFound
-    f.cbRepair    = cbRepair
-    f.cbWeapon    = cbWeapon
+    f.cbSelfFound  = cbSelfFound
+    f.cbRepair     = cbRepair
+    f.cbWeapon     = cbWeapon
+    f.cbBroadcast  = cbBroadcast
+    f.cbShowPopup  = cbShowPopup
+    f.cbShowWarning = cbShowWarning
 
     f:SetScript("OnShow", function(self)
         local v = GearCore.GetSetting("difficulty")
@@ -235,6 +258,9 @@ local function BuildOptionsFrame()
         self.cbSelfFound:Refresh()
         self.cbRepair:Refresh()
         self.cbWeapon:Refresh()
+        self.cbBroadcast:Refresh()
+        self.cbShowPopup:Refresh()
+        self.cbShowWarning:Refresh()
 
         local count = GearCoreUI.GetPendingCount()
         if count > 0 then

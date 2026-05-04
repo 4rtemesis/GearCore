@@ -1,8 +1,9 @@
-## Interface: 20504
+## Interface: 20505
 ## Title: GearCore
 ## Notes: Hardcore gear loss on death for WoW Classic
 ## Author: GearCore
 ## Version: 1.0
+## Icon: Interface\AddOns\GearCore\GCicon
 ## SavedVariables: GearCoreDB
 
 GearCore.lua

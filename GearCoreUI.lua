@@ -9,11 +9,13 @@ local pendingItems = {}
 local awaitingConfirmation = false
 local cursorArmed = false
 local processingTicker
-local lastDeleteButtonCenterX
-local lastDeleteButtonCenterY
-local lastConfirmButtonCenterX
-local lastConfirmButtonCenterY
+local statusUpdateTicker
 local GetDeletePopupFrame
+-- Forward declarations so functions defined later are upvalues, not nil global lookups
+local FinishQueue
+local ShowActiveFrame
+local GetTrackedItemState
+local RemoveFirstPendingItem
 
 -- On the modern WoW engine (post-Shadowlands, used by all Anniversary clients),
 -- SetBackdrop is only available on frames that inherit BackdropTemplate.
@@ -23,10 +25,11 @@ local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
 -- ── Frame construction ────────────────────────────────────────────────────────
 
 local function BuildFrame()
+    -- Item list frame (compact, no button)
     local f = CreateFrame("Frame", "GearCoreDeletionFrame", UIParent, backdropTemplate)
-    f:SetSize(330, 460)
-    f:SetPoint("CENTER")
-    f:SetFrameStrata("DIALOG")
+    f:SetSize(350, 300)
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
@@ -49,24 +52,10 @@ local function BuildFrame()
     sub:SetText("Items marked for deletion:")
     f.subLabel = sub
 
-    local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    btn:SetSize(210, 30)
-    btn:SetPoint("TOP", sub, "BOTTOM", 0, -10)
-    btn:SetText("DELETE MARKED ITEMS")
-    btn:SetScript("OnClick", GearCoreUI.ExecuteDeletion)
-    f.deleteBtn = btn
-
-    local warn = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    warn:SetPoint("TOP", btn, "BOTTOM", 0, -8)
-    warn:SetWidth(270)
-    warn:SetJustifyH("CENTER")
-    warn:SetTextColor(1, 0.3, 0.3)
-    warn:SetText("The window will step aside while each item is being processed.")
-
     -- Scroll area background
     local scrollBG = CreateFrame("Frame", nil, f, backdropTemplate)
-    scrollBG:SetPoint("TOPLEFT",  f, "TOPLEFT",   16, -128)
-    scrollBG:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -36, 16)
+    scrollBG:SetPoint("TOPLEFT",  f, "TOPLEFT",   16, -50)
+    scrollBG:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 16)
     scrollBG:SetBackdrop({
         bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
         tile = true, tileSize = 16,
@@ -84,6 +73,22 @@ local function BuildFrame()
     f.scrollChild = sc
     f.itemRows    = {}
 
+    -- Status message (shown when dead)
+    local statusMsg = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    statusMsg:SetPoint("TOP", f, "BOTTOM", 0, 8)
+    statusMsg:SetTextColor(1, 0.8, 0)
+    statusMsg:SetText("Resurrect to begin deleting items")
+    f.statusMsg = statusMsg
+
+    -- Delete button anchored directly below the list frame
+    local btn = CreateFrame("Button", "GearCoreDeletionButton", f, "UIPanelButtonTemplate")
+    btn:SetSize(160, 32)
+    btn:SetPoint("TOP", f, "BOTTOM", 0, -6)
+    btn:SetText("DELETE NEXT")
+    btn:SetScript("OnClick", GearCoreUI.ExecuteDeletion)
+    f.deleteBtn = btn
+    btn:Hide()
+
     -- No close button — the deletion window must not be dismissable.
     -- Use the recovery button in /gearcore options if the window needs to be reopened.
 
@@ -96,116 +101,57 @@ local function EnsureFrame()
     return deleteFrame
 end
 
-local function GetConfirmButtonTargetCenter()
-    local popup = GetDeletePopupFrame and GetDeletePopupFrame() or nil
-    if popup and popup.button1 then
-        local x, y = popup.button1:GetCenter()
-        if x and y then
-            lastConfirmButtonCenterX, lastConfirmButtonCenterY = x, y
-            return x, y
-        end
-    end
-
-    if lastConfirmButtonCenterX and lastConfirmButtonCenterY then
-        return lastConfirmButtonCenterX, lastConfirmButtonCenterY
-    end
-
-    local defaultButton = _G["StaticPopup1Button1"]
-    if defaultButton then
-        local x, y = defaultButton:GetCenter()
-        if x and y then
-            lastConfirmButtonCenterX, lastConfirmButtonCenterY = x, y
-            return x, y
-        end
-    end
-
-    local defaultPopup = _G["StaticPopup1"]
-    if defaultPopup and defaultPopup.button1 then
-        local _, _, _, popupX, popupY = defaultPopup:GetPoint(1)
-        popupX = popupX or 0
-        popupY = popupY or 0
-
-        local point, _, _, relX, relY = defaultPopup.button1:GetPoint(1)
-        relX = relX or 0
-        relY = relY or 0
-
-        local buttonWidth = defaultPopup.button1:GetWidth() or 0
-        local buttonHeight = defaultPopup.button1:GetHeight() or 0
-        local popupWidth = defaultPopup:GetWidth() or 0
-        local popupHeight = defaultPopup:GetHeight() or 0
-
-        local x = (GetScreenWidth() / 2) + popupX - (popupWidth / 2) + relX + (buttonWidth / 2)
-        local y = (GetScreenHeight() / 2) + popupY - (popupHeight / 2) + relY + (buttonHeight / 2)
-        lastConfirmButtonCenterX, lastConfirmButtonCenterY = x, y
-        return x, y
-    end
-
-    return nil, nil
-end
-
-local function AlignFrameButtonToConfirmTarget(frame)
-    if not frame or not frame.deleteBtn then
-        return
-    end
-
-    local targetX, targetY = GetConfirmButtonTargetCenter()
-    if not targetX or not targetY then
-        return
-    end
-
-    local btnX, btnY = frame.deleteBtn:GetCenter()
-    if not btnX or not btnY then
-        return
-    end
-
-    local frameX, frameY = frame:GetCenter()
-    if not frameX or not frameY then
-        return
-    end
-
-    local deltaX = targetX - btnX
-    local deltaY = targetY - btnY
-
-    frame:ClearAllPoints()
-    frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", frameX + deltaX, frameY + deltaY)
-end
-
-local function RestoreFrameVisualState()
-    local f = EnsureFrame()
-    if GearCoreOptions and GearCoreOptions.Hide then
-        GearCoreOptions.Hide()
-    end
-
-    f:ClearAllPoints()
-    f:SetPoint("CENTER")
-    f:SetParent(UIParent)
-    f:SetAlpha(1)
-    f:SetScale(1)
-    f:SetFrameStrata("DIALOG")
-    f:Show()
-    f:Raise()
-    AlignFrameButtonToConfirmTarget(f)
-
-    C_Timer.After(0, function()
-        if deleteFrame then
-            deleteFrame:SetParent(UIParent)
-            deleteFrame:SetAlpha(1)
-            deleteFrame:SetScale(1)
-            deleteFrame:SetFrameStrata("DIALOG")
-            deleteFrame:Show()
-            deleteFrame:Raise()
-            AlignFrameButtonToConfirmTarget(deleteFrame)
-        end
-    end)
-
-    return f
-end
 
 local function StopProcessingTicker()
     if processingTicker then
         processingTicker:Cancel()
         processingTicker = nil
     end
+end
+
+local function StopStatusUpdateTicker()
+    if statusUpdateTicker then
+        statusUpdateTicker:Cancel()
+        statusUpdateTicker = nil
+    end
+end
+
+local function RefreshButtonState()
+    local f = EnsureFrame()
+
+    if UnitIsDeadOrGhost("player") then
+        if f.statusMsg then
+            f.statusMsg:Show()
+            f.statusMsg:SetText("Resurrect to begin deleting items")
+        end
+        f.deleteBtn:Hide()
+        return
+    end
+
+    if f.statusMsg then
+        f.statusMsg:Hide()
+    end
+
+    if #pendingItems == 0 then
+        f.deleteBtn:Hide()
+        return
+    end
+
+    -- Keep button hidden while a deletion step is actively in flight.
+    if processingTicker then
+        return
+    end
+
+    f.deleteBtn:SetText(awaitingConfirmation and "CONFIRM" or "DELETE NEXT")
+    f.deleteBtn:Enable()
+    f.deleteBtn:Show()
+end
+
+local function StartStatusUpdateTicker()
+    StopStatusUpdateTicker()
+    statusUpdateTicker = C_Timer.NewTicker(0.5, function()
+        RefreshButtonState()
+    end)
 end
 
 local function SyncPendingDeletionDB()
@@ -223,29 +169,47 @@ local function SyncPendingDeletionDB()
     end
 end
 
-local function RefreshButtonState()
+local function RestoreFrameVisualState()
     local f = EnsureFrame()
-
-    if UnitIsDeadOrGhost("player") then
-        f.deleteBtn:SetText("Will unlock after resurrection")
-        f.deleteBtn:Disable()
-        return
+    if GearCoreOptions and GearCoreOptions.Hide then
+        GearCoreOptions.Hide()
     end
 
-    if #pendingItems == 0 then
-        f.deleteBtn:SetText("No pending items")
-        f.deleteBtn:Disable()
-        return
-    end
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 50, -50)
+    f:SetParent(UIParent)
+    f:SetAlpha(1)
+    f:SetScale(1)
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:Show()
+    f:Raise()
 
-    if awaitingConfirmation then
-        f.deleteBtn:SetText("Continue After DELETE Prompt")
-    elseif cursorArmed and CursorHasItem() then
-        f.deleteBtn:SetText("DESTROY HELD ITEM")
-    else
-        f.deleteBtn:SetText("DELETE NEXT ITEM (" .. #pendingItems .. " LEFT)")
+    StartStatusUpdateTicker()
+
+    return f
+end
+
+local function ShowTransitionNotification()
+    local f = EnsureFrame()
+    if not f.transitionLabel then
+        f.transitionLabel = f:CreateFontString(nil, "OVERLAY", "GameFontGreenSmall")
+        f.transitionLabel:SetPoint("TOP", f.deleteBtn, "BOTTOM", 0, -4)
     end
-    f.deleteBtn:Enable()
+    
+    f.transitionLabel:SetText("✓ Next item selected...")
+    f.transitionLabel:Show()
+    
+    if f.transitionTicker then
+        f.transitionTicker:Cancel()
+    end
+    f.transitionTicker = C_Timer.NewTicker(0.1, function()
+        f.transitionLabel:SetAlpha((f.transitionLabel:GetAlpha() or 1) - 0.15)
+        if f.transitionLabel:GetAlpha() <= 0 then
+            f.transitionLabel:Hide()
+            f.transitionTicker:Cancel()
+            f.transitionTicker = nil
+        end
+    end, 7)
 end
 
 GetDeletePopupFrame = function()
@@ -271,7 +235,6 @@ local function ResolveProcessingState()
     end
 
     StopProcessingTicker()
-    ShowActiveFrame()
 
     local equippedLink, bag = GetTrackedItemState(item)
 
@@ -279,9 +242,10 @@ local function ResolveProcessingState()
         cursorArmed = false
         awaitingConfirmation = false
         RemoveFirstPendingItem()
-        FinishQueue()
         return
     end
+
+    ShowActiveFrame()
 
     local function CheckDeleteRetry(remaining)
         if not pendingItems[1] or pendingItems[1] ~= item then
@@ -294,7 +258,6 @@ local function ResolveProcessingState()
             cursorArmed = false
             awaitingConfirmation = false
             RemoveFirstPendingItem()
-            FinishQueue()
             return
         end
 
@@ -319,53 +282,37 @@ end
 local function PositionDeletePopup()
     local popup = GetDeletePopupFrame()
     local f = deleteFrame
-    if not popup or not f or not f.deleteBtn then
-        return
-    end
+    if not popup or not f or not f.deleteBtn then return end
 
     if not popup.__gearcoreHooked then
         popup.__gearcoreHooked = true
         popup:HookScript("OnHide", function()
-            C_Timer.After(0, function()
-                ResolveProcessingState()
-            end)
+            popup.__gearcorePositioned = false
+            C_Timer.After(0, function() ResolveProcessingState() end)
         end)
     end
 
+    if popup.__gearcorePositioned then return end
+    popup.__gearcorePositioned = true
+
     local btn = f.deleteBtn
-    local targetX = lastDeleteButtonCenterX
-    local targetY = lastDeleteButtonCenterY
-    if not targetX or not targetY then
-        targetX, targetY = btn:GetCenter()
-    end
-
-    if not targetX or not targetY then
-        popup:ClearAllPoints()
-        popup:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        return
-    end
-
-    local popupCenterX, popupCenterY = popup:GetCenter()
-    local confirmCenterX, confirmCenterY
-    if popup.button1 then
-        confirmCenterX, confirmCenterY = popup.button1:GetCenter()
-        if confirmCenterX and confirmCenterY then
-            lastConfirmButtonCenterX, lastConfirmButtonCenterY = confirmCenterX, confirmCenterY
-        end
-    end
-    if not popupCenterX or not popupCenterY or not confirmCenterX or not confirmCenterY then
-        popup:ClearAllPoints()
-        popup:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        return
-    end
-
-    local offsetX = confirmCenterX - popupCenterX
-    local offsetY = confirmCenterY - popupCenterY
-    local desiredCenterX = targetX - offsetX
-    local desiredCenterY = targetY - offsetY
-
+    -- Step 1: centre popup on our button so btn1's offset from popup is measurable.
     popup:ClearAllPoints()
-    popup:SetPoint("CENTER", UIParent, "BOTTOMLEFT", desiredCenterX, desiredCenterY)
+    popup:SetPoint("CENTER", btn, "CENTER", 0, 0)
+
+    -- Step 2: next frame, shift popup so its Button1 lands exactly on our button.
+    C_Timer.After(0, function()
+        if not popup:IsShown() then return end
+        local btn1 = _G[popup:GetName() .. "Button1"]
+        if not btn1 then return end
+        local bx, by   = btn:GetCenter()
+        local b1x, b1y = btn1:GetCenter()
+        if not bx or not b1x then return end
+        -- popup centre must move by (bx - b1x, by - b1y) relative to its current spot.
+        -- current popup centre = (bx, by), so new centre = (2*bx - b1x, 2*by - b1y).
+        popup:ClearAllPoints()
+        popup:SetPoint("CENTER", UIParent, "BOTTOMLEFT", 2 * bx - b1x, 2 * by - b1y)
+    end)
 end
 
 -- ── Item list population ──────────────────────────────────────────────────────
@@ -456,14 +403,19 @@ function GearCoreUI.ShowDeletionFrame(items)
     RefreshButtonState()
 end
 
+local function GetItemIdFromLink(link)
+    return link and link:match("item:(%d+)")
+end
+
 local function FindItemInBagsByLink(link)
-    if not link then
-        return nil, nil
-    end
+    if not link then return nil, nil end
+    local targetId = GetItemIdFromLink(link)
+    if not targetId then return nil, nil end
 
     for bag = 0, 4 do
         for slot = 1, BagGetNumSlots(bag) do
-            if BagGetItemLink(bag, slot) == link then
+            local bagLink = BagGetItemLink(bag, slot)
+            if bagLink and GetItemIdFromLink(bagLink) == targetId then
                 return bag, slot
             end
         end
@@ -472,23 +424,18 @@ local function FindItemInBagsByLink(link)
     return nil, nil
 end
 
-local function RemoveFirstPendingItem()
-    table.remove(pendingItems, 1)
-    SyncPendingDeletionDB()
-    PopulateList(pendingItems)
-    RefreshButtonState()
-end
-
-local function FinishQueue()
+FinishQueue = function()
     awaitingConfirmation = false
     cursorArmed = false
     StopProcessingTicker()
+    StopStatusUpdateTicker()
     SyncPendingDeletionDB()
     PopulateList(pendingItems)
 
     if #pendingItems == 0 then
         print("|cffff4444GearCore:|r Deletion complete — all marked items processed.")
         if deleteFrame then
+            deleteFrame.deleteBtn:Hide()
             deleteFrame:Hide()
         end
         return
@@ -498,27 +445,52 @@ local function FinishQueue()
     RefreshButtonState()
 end
 
-local function GetTrackedItemState(item)
+RemoveFirstPendingItem = function()
+    table.remove(pendingItems, 1)
+    SyncPendingDeletionDB()
+    PopulateList(pendingItems)
+    awaitingConfirmation = false
+    cursorArmed = false
+    StopProcessingTicker()
+    StopStatusUpdateTicker()
+
+    if #pendingItems == 0 then
+        print("|cffff4444GearCore:|r Deletion complete — all marked items processed.")
+        if deleteFrame then
+            deleteFrame.deleteBtn:Hide()
+            deleteFrame:Hide()
+        end
+        return
+    end
+
+    local f = EnsureFrame()
+    f:Show()
+    if f.deleteBtn then
+        f.deleteBtn:SetText("DELETE NEXT")
+        f.deleteBtn:Enable()
+        f.deleteBtn:Show()
+    end
+    StartStatusUpdateTicker()
+end
+
+GetTrackedItemState = function(item)
     local equippedLink = GetInventoryItemLink("player", item.slot)
-    if equippedLink ~= item.link then
+    if equippedLink and GetItemIdFromLink(equippedLink) ~= GetItemIdFromLink(item.link) then
         equippedLink = nil
     end
     local bag, bagSlot = FindItemInBagsByLink(item.link)
     return equippedLink, bag, bagSlot
 end
 
-local function ShowActiveFrame()
+ShowActiveFrame = function()
     local f = RestoreFrameVisualState()
     RefreshButtonState()
 end
 
 local function HideProcessingFrame()
+    -- Leave statusUpdateTicker running; RefreshButtonState gates on processingTicker.
     if deleteFrame and deleteFrame.deleteBtn then
-        lastDeleteButtonCenterX, lastDeleteButtonCenterY = deleteFrame.deleteBtn:GetCenter()
-        deleteFrame:ClearAllPoints()
-        deleteFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", -2000, -2000)
-        deleteFrame:SetAlpha(1)
-        deleteFrame:Show()
+        deleteFrame.deleteBtn:Hide()
     end
 end
 
@@ -532,13 +504,20 @@ local function BeginProcessingMonitor()
     StopProcessingTicker()
     HideProcessingFrame()
 
+    local popupWasSeen = false
+
     processingTicker = C_Timer.NewTicker(0.1, function()
         local popup = GetDeletePopupFrame()
         if popup then
             awaitingConfirmation = true
-            PositionDeletePopup()
+            if not popupWasSeen then
+                popupWasSeen = true
+                PositionDeletePopup()
+            end
             return
         end
+
+        popupWasSeen = false
 
         if CursorHasItem() then
             return
@@ -571,7 +550,6 @@ local function BeginCursorMonitor()
             cursorArmed = false
             awaitingConfirmation = false
             RemoveFirstPendingItem()
-            FinishQueue()
             return
         end
 
@@ -596,11 +574,14 @@ local function BeginArmMonitor()
 
         if CursorHasItem() then
             StopProcessingTicker()
-            cursorArmed = true
+            cursorArmed = false
             awaitingConfirmation = false
-            ShowActiveFrame()
-            RefreshButtonState()
-            BeginCursorMonitor()
+            DeleteCursorItem()
+            awaitingConfirmation = GetDeletePopupFrame() and true or false
+            if awaitingConfirmation then
+                PositionDeletePopup()
+            end
+            BeginProcessingMonitor()
             return
         end
 
@@ -610,7 +591,6 @@ local function BeginArmMonitor()
             awaitingConfirmation = false
             ShowActiveFrame()
             RemoveFirstPendingItem()
-            FinishQueue()
             return
         end
 
@@ -639,15 +619,15 @@ local function BeginMoveMonitor()
 
         local equippedLink, bag = GetTrackedItemState(item)
         StopProcessingTicker()
-        ShowActiveFrame()
 
         if bag then
             awaitingConfirmation = false
             cursorArmed = false
-            RefreshButtonState()
-            print("|cffff4444GearCore:|r Item moved to bag. Click Delete Next Item again to pick it up.")
+            ShowActiveFrame()
             return
         end
+
+        ShowActiveFrame()
 
         local function CheckMoveRetry(remaining)
             if not pendingItems[1] or pendingItems[1] ~= item then
@@ -659,8 +639,7 @@ local function BeginMoveMonitor()
             if bagRetry then
                 awaitingConfirmation = false
                 cursorArmed = false
-                RefreshButtonState()
-                print("|cffff4444GearCore:|r Item moved to bag. Click Delete Next Item again to pick it up.")
+                ShowActiveFrame()
                 return
             end
 
@@ -699,6 +678,7 @@ function GearCoreUI.ExecuteDeletion()
         return
     end
 
+
     local item = pendingItems[1]
     local frameHiddenForProcessing = false
 
@@ -728,30 +708,9 @@ function GearCoreUI.ExecuteDeletion()
             awaitingConfirmation = false
             cursorArmed = false
             RemoveFirstPendingItem()
-            FinishQueue()
         else
             print("|cffff4444GearCore:|r That item is still present. Confirm the popup, then click again if needed.")
         end
-        return
-    end
-
-    if cursorArmed then
-        if not CursorHasItem() then
-            cursorArmed = false
-            ShowActiveFrame()
-            RefreshButtonState()
-            print("|cffff4444GearCore:|r Held item was cleared. Click again to retry.")
-            return
-        end
-
-        HideNow()
-        DeleteCursorItem()
-        awaitingConfirmation = GetDeletePopupFrame() and true or false
-        cursorArmed = false
-        if awaitingConfirmation then
-            PositionDeletePopup()
-        end
-        BeginProcessingMonitor()
         return
     end
 
@@ -760,7 +719,6 @@ function GearCoreUI.ExecuteDeletion()
     if not equippedLink and not bag then
         print("|cffff4444GearCore:|r Skipping missing item: " .. (item.link or item.name or "unknown item"))
         RemoveFirstPendingItem()
-        FinishQueue()
         return
     end
 
@@ -786,8 +744,15 @@ function GearCoreUI.ExecuteDeletion()
 
         cursorArmed = false
         awaitingConfirmation = false
-        BeginMoveMonitor()
         PickupContainerItem(bag, bagSlot)
+        -- We know exactly where the item landed; pick it up after one frame
+        local targetBag, targetBagSlot = bag, bagSlot
+        C_Timer.After(0.15, function()
+            if not pendingItems[1] or pendingItems[1] ~= item then return end
+            ClearCursor()
+            BeginArmMonitor()
+            PickupContainerItem(targetBag, targetBagSlot)
+        end)
         return
     end
 

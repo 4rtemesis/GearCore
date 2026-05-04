@@ -7,10 +7,13 @@ GearCoreDB = GearCoreDB or {}
 GearCore = {}
 
 local defaults = {
-    difficulty    = 2,     -- 1=Lite, 2=Difficult, 3=Extreme
-    selfFound     = false, -- block mailbox / AH / trade
-    blockRepair   = false, -- disable merchant repair buttons
-    keepMainWeapon = false, -- spare main weapon slot from deletion
+    difficulty      = 2,     -- 1=Lite, 2=Difficult, 3=Extreme
+    selfFound       = false, -- block mailbox / AH / trade
+    blockRepair     = false, -- disable merchant repair buttons
+    keepMainWeapon  = false, -- spare main weapon slot from deletion
+    broadcastDeaths = true,  -- broadcast death to GearCore channel
+    showDeathPopup  = true,  -- show popup notification for other players' deaths
+    showDeathWarning= false, -- show center-screen warning for other players' deaths
 }
 
 -- Gear slots tracked (shirt=4, tabard=19 excluded)
@@ -180,6 +183,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         if (...) == "GearCore" then
             InitSettings()
+            GearCoreBroadcast.Init()
             print("|cffff4444GearCore|r loaded. |cffffd700/gearcore|r for options.")
 
             -- Handle pending deletions from a previous session (player logged out while dead).
@@ -271,6 +275,10 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "MERCHANT_CLOSED" then
         ResetRepairButtons()
+
+    elseif event == "CHAT_MSG_ADDON" then
+        local prefix, message, distribution, sender = ...
+        GearCoreBroadcast.OnAddonMessage(prefix, message, distribution, sender)
     end
 end)
 
