@@ -344,7 +344,7 @@ local function PopulateList(items)
 
         if i == 1 then
             row:SetBackdrop({ bgFile = "Interface\\ChatFrame\\ChatFrameBackground", tile = true, tileSize = 16 })
-            row:SetBackdropColor(0.8, 0.1, 0.1, 0.35)
+            row:SetBackdropColor(0.9, 0.8, 0.1, 0.35)
         end
 
         local icon = row:CreateTexture(nil, "ARTWORK")
@@ -546,7 +546,18 @@ local function BeginProcessingMonitor()
                 if autoDeleteActive then
                     C_Timer.After(0.05, function()
                         local p = GetDeletePopupFrame()
-                        if p and p.button1 then p.button1:Click() end
+                        if not p then return end
+                        if p.editBox then
+                            p.editBox:SetText(DELETE or "DELETE")
+                            if p.editBox:GetScript("OnTextChanged") then
+                                p.editBox:GetScript("OnTextChanged")(p.editBox, true)
+                            end
+                        end
+                        if StaticPopup_OnClick then
+                            StaticPopup_OnClick(p, 1)
+                        elseif p.button1 then
+                            p.button1:Click()
+                        end
                     end)
                 end
             end
