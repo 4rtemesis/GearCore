@@ -65,7 +65,7 @@ local function BuildFrame()
 
     local sf = CreateFrame("ScrollFrame", "GearCoreDeletionScroll", f, "UIPanelScrollFrameTemplate")
     sf:SetPoint("TOPLEFT",     scrollBG, "TOPLEFT",     2, -2)
-    sf:SetPoint("BOTTOMRIGHT", scrollBG, "BOTTOMRIGHT", -2, 2)
+    sf:SetPoint("BOTTOMRIGHT", scrollBG, "BOTTOMRIGHT", -22, 2)
 
     local sc = CreateFrame("Frame", nil, sf)
     sc:SetWidth(264)
