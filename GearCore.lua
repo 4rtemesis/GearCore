@@ -172,7 +172,6 @@ eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("PLAYER_DEAD")
 eventFrame:RegisterEvent("PLAYER_ALIVE")
 eventFrame:RegisterEvent("PLAYER_UNGHOST")
-eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 eventFrame:RegisterEvent("MAIL_SHOW")
 eventFrame:RegisterEvent("AUCTION_HOUSE_SHOW")
 eventFrame:RegisterEvent("TRADE_SHOW")
@@ -242,16 +241,6 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             end)
         end
 
-    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        local _, ev, _, _, srcName, _, _, dstGUID = CombatLogGetCurrentEventInfo()
-        if dstGUID == UnitGUID("player") then
-            if ev == "ENVIRONMENTAL_DAMAGE" then
-                lastDeathSource = select(12, CombatLogGetCurrentEventInfo())  -- e.g. "Falling", "Drowning"
-            elseif ev:find("DAMAGE") and srcName and srcName ~= "" then
-                lastDeathSource = srcName
-            end
-        end
-
     elseif event == "MAIL_SHOW" then
         if GearCore.GetSetting("selfFound") then
             C_Timer.After(0, function() HideUIPanel(MailFrame) end)
@@ -281,6 +270,28 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         GearCoreBroadcast.OnAddonMessage(prefix, message, distribution, sender)
     end
 end)
+
+-- ── Combat log — isolated frame so errors here can't kill PLAYER_DEAD ────────
+do
+    local playerGUID
+    local clFrame = CreateFrame("Frame")
+    clFrame:RegisterEvent("PLAYER_LOGIN")
+    clFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    clFrame:SetScript("OnEvent", function(_, ev, ...)
+        if ev == "PLAYER_LOGIN" then
+            playerGUID = UnitGUID("player")
+            return
+        end
+        -- COMBAT_LOG_EVENT_UNFILTERED
+        local _, subEv, _, _, srcName, _, _, dstGUID = CombatLogGetCurrentEventInfo()
+        if not subEv or dstGUID ~= playerGUID then return end
+        if subEv == "ENVIRONMENTAL_DAMAGE" then
+            lastDeathSource = select(12, CombatLogGetCurrentEventInfo())
+        elseif subEv:find("DAMAGE", 1, true) and srcName and srcName ~= "" then
+            lastDeathSource = srcName
+        end
+    end)
+end
 
 -- ── Block auto-repair from other addons ──────────────────────────────────────
 -- Disabling the UI buttons only stops clicks; other addons call RepairAllItems()
