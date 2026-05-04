@@ -27,6 +27,14 @@ local ClearSpinRows
 
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
 
+local function SetTexGradientAlpha(tex, orient, r1,g1,b1,a1, r2,g2,b2,a2)
+    if tex.SetGradientAlpha then
+        tex:SetGradientAlpha(orient, r1,g1,b1,a1, r2,g2,b2,a2)
+    elseif tex.SetGradient and CreateColor then
+        tex:SetGradient(orient, CreateColor(r1,g1,b1,a1), CreateColor(r2,g2,b2,a2))
+    end
+end
+
 -- ── Slot → texture lookup ─────────────────────────────────────────────────────
 
 local SLOT_NAMES = {
@@ -101,13 +109,13 @@ local function BuildSpinRow(parent, yOffset, targetSlot, targetTex, allIcons, ch
     fadeL:SetSize(FADE_W, STRIP_H)
     fadeL:SetPoint("LEFT", clip, "LEFT", 0, 0)
     fadeL:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-    fadeL:SetGradientAlpha("HORIZONTAL", 0,0,0,0.85, 0,0,0,0)
+    SetTexGradientAlpha(fadeL, "HORIZONTAL", 0,0,0,0.85, 0,0,0,0)
 
     local fadeR = clip:CreateTexture(nil, "OVERLAY")
     fadeR:SetSize(FADE_W, STRIP_H)
     fadeR:SetPoint("RIGHT", clip, "RIGHT", 0, 0)
     fadeR:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-    fadeR:SetGradientAlpha("HORIZONTAL", 0,0,0,0, 0,0,0,0.85)
+    SetTexGradientAlpha(fadeR, "HORIZONTAL", 0,0,0,0, 0,0,0,0.85)
 
     -- Build icon pool inside clip: enough to wrap seamlessly
     local totalIcons = #allIcons
