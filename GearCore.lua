@@ -125,8 +125,6 @@ end
 local function OnPlayerDead()
     print("|cffff4444GearCore DEBUG:|r OnPlayerDead called.")
     local ok, err = pcall(function()
-        if Screenshot then C_Timer.After(0.65, Screenshot) end
-
         local source = (#combatSnapshot > 0) and combatSnapshot or nil
         print("|cffff4444GearCore DEBUG:|r snapshot=" .. #combatSnapshot)
         if not source then
