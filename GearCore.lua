@@ -123,18 +123,21 @@ local function BuildMarkedItems(source)
 end
 
 local function OnPlayerDead()
-    C_Timer.After(0.65, Screenshot)
+    print("|cffff4444GearCore DEBUG:|r OnPlayerDead called.")
+    if Screenshot then C_Timer.After(0.65, Screenshot) end
 
     local source = (#combatSnapshot > 0) and combatSnapshot or nil
+    print("|cffff4444GearCore DEBUG:|r combatSnapshot size: " .. #combatSnapshot)
     if not source then
         TakeSnapshot()
         source = combatSnapshot
+        print("|cffff4444GearCore DEBUG:|r TakeSnapshot fallback, found: " .. #source)
     end
 
     BuildMarkedItems(source)
+    print("|cffff4444GearCore DEBUG:|r markedItems count: " .. #markedItems)
 
     if #markedItems > 0 then
-        -- Persist to SavedVariables so a logout-while-dead can't dodge the penalty.
         GearCoreDB.pendingDeletion = {}
         for _, item in ipairs(markedItems) do
             GearCoreDB.pendingDeletion[#GearCoreDB.pendingDeletion+1] = {
@@ -211,6 +214,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         end
 
     elseif event == "PLAYER_DEAD" then
+        print("|cffff4444GearCore DEBUG:|r PLAYER_DEAD event received.")
         isDead = true
         OnPlayerDead()
 
@@ -311,6 +315,11 @@ end
 
 SLASH_GEARCORE1 = "/gearcore"
 SLASH_GEARCORE2 = "/gc"
-SlashCmdList["GEARCORE"] = function()
-    GearCoreOptions.Toggle()
+SlashCmdList["GEARCORE"] = function(msg)
+    if msg == "test" then
+        print("|cffff4444GearCore:|r Simulating death...")
+        OnPlayerDead()
+    else
+        GearCoreOptions.Toggle()
+    end
 end
