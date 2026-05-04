@@ -10,6 +10,7 @@ local awaitingConfirmation = false
 local cursorArmed = false
 local processingTicker
 local statusUpdateTicker
+local savedBtnX, savedBtnY   -- button screen coords saved before hiding
 local GetDeletePopupFrame
 -- Forward declarations so functions defined later are upvalues, not nil global lookups
 local FinishQueue
@@ -137,12 +138,12 @@ local function RefreshButtonState()
         return
     end
 
-    -- Keep button hidden while a deletion step is actively in flight.
-    if processingTicker then
+    -- Keep button hidden while processing or cursor/popup is active.
+    if processingTicker or CursorHasItem() or GetDeletePopupFrame() then
         return
     end
 
-    f.deleteBtn:SetText(awaitingConfirmation and "CONFIRM" or "DELETE NEXT")
+    f.deleteBtn:SetText("DELETE NEXT")
     f.deleteBtn:Enable()
     f.deleteBtn:Show()
 end
@@ -281,35 +282,33 @@ end
 
 local function PositionDeletePopup()
     local popup = GetDeletePopupFrame()
-    local f = deleteFrame
-    if not popup or not f or not f.deleteBtn then return end
+    if not popup then return end
 
     if not popup.__gearcoreHooked then
         popup.__gearcoreHooked = true
         popup:HookScript("OnHide", function()
             popup.__gearcorePositioned = false
-            C_Timer.After(0, function() ResolveProcessingState() end)
+            C_Timer.After(0, ResolveProcessingState)
         end)
     end
-
     if popup.__gearcorePositioned then return end
     popup.__gearcorePositioned = true
 
-    local btn = f.deleteBtn
-    -- Step 1: centre popup on our button so btn1's offset from popup is measurable.
-    popup:ClearAllPoints()
-    popup:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    -- Use the coords saved when the button was hidden.
+    local bx, by = savedBtnX, savedBtnY
+    if not bx or not by then return end
 
-    -- Step 2: next frame, shift popup so its Button1 lands exactly on our button.
+    -- Step 1: place popup centred at saved position so btn1 offset is measurable.
+    popup:ClearAllPoints()
+    popup:SetPoint("CENTER", UIParent, "BOTTOMLEFT", bx, by)
+
+    -- Step 2: next frame, shift so popup.button1 lands exactly on saved position.
     C_Timer.After(0, function()
         if not popup:IsShown() then return end
-        local btn1 = _G[popup:GetName() .. "Button1"]
+        local btn1 = popup.button1 or _G[(popup:GetName() or "") .. "Button1"]
         if not btn1 then return end
-        local bx, by   = btn:GetCenter()
         local b1x, b1y = btn1:GetCenter()
-        if not bx or not b1x then return end
-        -- popup centre must move by (bx - b1x, by - b1y) relative to its current spot.
-        -- current popup centre = (bx, by), so new centre = (2*bx - b1x, 2*by - b1y).
+        if not b1x then return end
         popup:ClearAllPoints()
         popup:SetPoint("CENTER", UIParent, "BOTTOMLEFT", 2 * bx - b1x, 2 * by - b1y)
     end)
@@ -488,8 +487,8 @@ ShowActiveFrame = function()
 end
 
 local function HideProcessingFrame()
-    -- Leave statusUpdateTicker running; RefreshButtonState gates on processingTicker.
     if deleteFrame and deleteFrame.deleteBtn then
+        savedBtnX, savedBtnY = deleteFrame.deleteBtn:GetCenter()
         deleteFrame.deleteBtn:Hide()
     end
 end
@@ -725,14 +724,6 @@ function GearCoreUI.ExecuteDeletion()
     HideNow()
 
     if equippedLink then
-        bag, bagSlot = FindEmptyBagSlot()
-        if not bag then
-            RestoreNow()
-            print("|cffff4444GearCore:|r Need at least 1 empty bag slot to process the next equipped item.")
-            RefreshButtonState()
-            return
-        end
-
         ClearCursor()
         PickupInventoryItem(item.slot)
         if not CursorHasItem() then
@@ -741,18 +732,12 @@ function GearCoreUI.ExecuteDeletion()
             RefreshButtonState()
             return
         end
-
         cursorArmed = false
         awaitingConfirmation = false
-        PickupContainerItem(bag, bagSlot)
-        -- We know exactly where the item landed; pick it up after one frame
-        local targetBag, targetBagSlot = bag, bagSlot
-        C_Timer.After(0.15, function()
-            if not pendingItems[1] or pendingItems[1] ~= item then return end
-            ClearCursor()
-            BeginArmMonitor()
-            PickupContainerItem(targetBag, targetBagSlot)
-        end)
+        DeleteCursorItem()
+        awaitingConfirmation = GetDeletePopupFrame() and true or false
+        if awaitingConfirmation then PositionDeletePopup() end
+        BeginProcessingMonitor()
         return
     end
 
