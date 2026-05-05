@@ -622,6 +622,13 @@ local function BagGetItemLink(bag, slot)
     return GetContainerItemLink(bag, slot)
 end
 
+local function BagPickupItem(bag, slot)
+    if C_Container then
+        return C_Container.PickupContainerItem(bag, slot)
+    end
+    return PickupContainerItem(bag, slot)
+end
+
 local function FindEmptyBagSlot()
     for bag = 0, 4 do
         for slot = 1, BagGetNumSlots(bag) do
@@ -858,8 +865,9 @@ local function BeginArmMonitor()
     if not item then FinishQueue(); return end
 
     StopProcessingTicker()
+    local retriesLeft = 4
     processingTicker = C_Timer.NewTicker(0.1, function()
-        local equippedLink, bag = GetTrackedItemState(item)
+        local equippedLink, bag, bagSlot = GetTrackedItemState(item)
 
         if CursorHasItem() then
             StopProcessingTicker()
@@ -878,6 +886,13 @@ local function BeginArmMonitor()
             awaitingConfirmation = false
             ShowActiveFrame()
             RemoveFirstPendingItem()
+            return
+        end
+
+        if bag and bagSlot and retriesLeft > 0 then
+            retriesLeft = retriesLeft - 1
+            ClearCursor()
+            BagPickupItem(bag, bagSlot)
             return
         end
 
@@ -1014,7 +1029,7 @@ function RustcoreUI.ExecuteDeletion()
 
     ClearCursor()
     BeginArmMonitor()
-    PickupContainerItem(bag, bagSlot)
+    BagPickupItem(bag, bagSlot)
 end
 
 function RustcoreUI.GetPendingCount()
