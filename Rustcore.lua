@@ -260,13 +260,13 @@ local function CreateMinimapButton()
     local bg = btn:CreateTexture(nil, "BACKGROUND")
     bg:SetTexture("Interface\\Minimap\\MiniMap-TrackingBackground")
     bg:SetSize(20, 20)
-    bg:SetPoint("CENTER", btn, "CENTER", -11, 12)
+    bg:SetPoint("CENTER", btn, "CENTER", -10, 11)
     bg:SetVertexColor(0.15, 0.15, 0.15)
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(Rustcore.GetAssetPath("RCicon.png"))
     icon:SetSize(17, 17)
-    icon:SetPoint("CENTER", btn, "CENTER", -12, 13)
+    icon:SetPoint("CENTER", btn, "CENTER", -11, 12)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
 
