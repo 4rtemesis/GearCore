@@ -79,10 +79,12 @@ local function TakeSnapshot()
             local link = GetInventoryItemLink("player", slotId)
             if link then
                 local name = GetItemInfo(link)
+                local tex = GetInventoryItemTexture("player", slotId) or GetItemIcon(link)
                 combatSnapshot[#combatSnapshot + 1] = {
                     slot = slotId,
                     link = link,
                     name = name or ("Slot " .. slotId),
+                    tex = tex,
                 }
             end
         end
@@ -156,14 +158,20 @@ local function OnPlayerDead()
 
         if #markedItems > 0 then
             RustcoreDB.pendingDeletion = {}
+            RustcoreDB.pendingDeletionSnapshot = {}
             for _, item in ipairs(markedItems) do
                 RustcoreDB.pendingDeletion[#RustcoreDB.pendingDeletion+1] = {
-                    slot = item.slot, link = item.link, name = item.name,
+                    slot = item.slot, link = item.link, name = item.name, tex = item.tex,
+                }
+            end
+            for _, item in ipairs(source) do
+                RustcoreDB.pendingDeletionSnapshot[#RustcoreDB.pendingDeletionSnapshot+1] = {
+                    slot = item.slot, link = item.link, name = item.name, tex = item.tex,
                 }
             end
             RustcoreDB.lastDeathSource = lastDeathSource
             RustcoreBroadcast.Announce(markedItems, lastDeathSource)
-            RustcoreUI.ShowDeletionFrame(markedItems)
+            RustcoreUI.ShowDeletionFrame(markedItems, source)
         else
             if Rustcore.GetSetting("difficulty") == 1 then
                 print("|cffff4444Rustcore:|r Lite mode — no items lost.")
@@ -215,11 +223,11 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
             if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then
                 if UnitIsDeadOrGhost("player") then
-                    RustcoreUI.ShowDeletionFrame(RustcoreDB.pendingDeletion)
+                    RustcoreUI.ShowDeletionFrame(RustcoreDB.pendingDeletion, RustcoreDB.pendingDeletionSnapshot)
                 else
                     print("|cffff4444Rustcore:|r Pending death penalty detected — open the Rustcore window and click to process each item.")
                     C_Timer.After(1, function()
-                        RustcoreUI.ShowDeletionFrame(RustcoreDB.pendingDeletion)
+                        RustcoreUI.ShowDeletionFrame(RustcoreDB.pendingDeletion, RustcoreDB.pendingDeletionSnapshot)
                     end)
                 end
             end
@@ -249,7 +257,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then
                 print("|cffff4444Rustcore:|r Resurrection detected — click the Rustcore button to process your pending deletions.")
                 C_Timer.After(1, function()
-                    RustcoreUI.OnResurrect(RustcoreDB.pendingDeletion)
+                    RustcoreUI.OnResurrect(RustcoreDB.pendingDeletion, RustcoreDB.pendingDeletionSnapshot)
                 end)
             end
         end
@@ -259,7 +267,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then
             print("|cffff4444Rustcore:|r Resurrection detected — click the Rustcore button to process your pending deletions.")
             C_Timer.After(1, function()
-                RustcoreUI.OnResurrect(RustcoreDB.pendingDeletion)
+                RustcoreUI.OnResurrect(RustcoreDB.pendingDeletion, RustcoreDB.pendingDeletionSnapshot)
             end)
         end
 

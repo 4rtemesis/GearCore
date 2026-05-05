@@ -78,6 +78,38 @@ local function GetEquippedIconList()
     return icons
 end
 
+local function GetDisplayTexture(item)
+    if not item then return "Interface\\Icons\\INV_Misc_QuestionMark" end
+    return item.tex or (item.link and GetItemIcon(item.link)) or GetInventoryItemTexture("player", item.slot) or "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+local function BuildIconListFromItems(items)
+    local icons = {}
+    for _, item in ipairs(items or {}) do
+        local tex = GetDisplayTexture(item)
+        if tex then
+            icons[#icons + 1] = {
+                tex = tex,
+                slot = item.slot,
+                link = item.link,
+                name = item.name,
+            }
+        end
+    end
+
+    local step = ICON_SIZE + ICON_GAP
+    local needed = math.ceil(STRIP_W / step) + 4
+    while #icons > 0 and #icons < needed do
+        local baseCount = #icons
+        for i = 1, baseCount do
+            icons[#icons + 1] = icons[i]
+            if #icons >= needed then break end
+        end
+    end
+
+    return icons
+end
+
 -- ── Spin row construction ─────────────────────────────────────────────────────
 
 -- Each pending item gets one spin row. The row contains:
@@ -397,7 +429,7 @@ PopulateSpinUI = function(items, skipAnim)
         local chosenIdx = 1
         local found = false
         for j, ic in ipairs(allIcons) do
-            if ic.slot == item.slot then
+            if (ic.link and item.link and LinksMatch(ic.link, item.link)) or ic.slot == item.slot then
                 chosenIdx = j
                 found = true
                 break
@@ -408,7 +440,7 @@ PopulateSpinUI = function(items, skipAnim)
         end
 
         local yOff = -((i-1) * (rowH + ROW_SPACING))
-        local tex  = item.tex or GetInventoryItemTexture("player", item.slot)
+        local tex  = GetDisplayTexture(item)
         local row  = BuildSpinRow(f.rowContainer, yOff, item.slot, tex, allIcons, chosenIdx)
         row.isFirst = (i == 1)
         row:Show()
@@ -589,7 +621,7 @@ end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
-function RustcoreUI.ShowDeletionFrame(items)
+function RustcoreUI.ShowDeletionFrame(items, snapshotItems)
     local sourceItems = {}
     local reuseSpinIcons = (items == pendingItems and activeSpinIcons and #activeSpinIcons > 0)
     for _, item in ipairs(items) do
@@ -598,13 +630,16 @@ function RustcoreUI.ShowDeletionFrame(items)
 
     frameBottomAnchorX, frameBottomAnchorY = nil, nil  -- fresh death: re-center
     wipe(pendingItems)
-    activeSpinIcons = reuseSpinIcons and activeSpinIcons or GetEquippedIconList()
+    activeSpinIcons = reuseSpinIcons and activeSpinIcons or BuildIconListFromItems(snapshotItems or sourceItems)
+    if #activeSpinIcons == 0 then
+        activeSpinIcons = GetEquippedIconList()
+    end
     for _, item in ipairs(sourceItems) do
         pendingItems[#pendingItems+1] = {
             slot = item.slot,
             link = item.link,
             name = item.name,
-            tex  = item.tex or GetInventoryItemTexture("player", item.slot),
+            tex  = GetDisplayTexture(item),
         }
     end
     awaitingConfirmation = false
@@ -656,6 +691,7 @@ FinishQueue = function()
 
     if #pendingItems == 0 then
         activeSpinIcons = nil
+        RustcoreDB.pendingDeletionSnapshot = nil
         print("|cffff4444Rustcore:|r Deletion complete — all marked items processed.")
         ClearSpinRows()
         if deleteFrame then
@@ -684,6 +720,7 @@ RemoveFirstPendingItem = function()
 
     if #pendingItems == 0 then
         activeSpinIcons = nil
+        RustcoreDB.pendingDeletionSnapshot = nil
         print("|cffff4444Rustcore:|r Deletion complete — all marked items processed.")
         ClearSpinRows()
         if deleteFrame then
@@ -987,13 +1024,13 @@ function RustcoreUI.GetPendingCount()
 end
 
 -- Called on resurrection: re-enable the button without replaying the spin
-function RustcoreUI.OnResurrect(source)
+function RustcoreUI.OnResurrect(source, snapshotItems)
     if not source or #source == 0 then return end
     if deleteFrame and deleteFrame:IsShown() and #deleteFrame.spinRows > 0 then
         RestoreFrameVisualState()
         RefreshButtonState()
     else
-        RustcoreUI.ShowDeletionFrame(source)
+        RustcoreUI.ShowDeletionFrame(source, snapshotItems)
     end
 end
 
@@ -1004,7 +1041,7 @@ function RustcoreUI.ReopenDeletionFrame()
         print("|cffff4444Rustcore:|r No pending death penalty items.")
         return
     end
-    RustcoreUI.ShowDeletionFrame(source)
+    RustcoreUI.ShowDeletionFrame(source, RustcoreDB.pendingDeletionSnapshot)
 end
 
 do
