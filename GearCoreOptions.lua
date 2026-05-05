@@ -139,9 +139,9 @@ local function BuildOptionsFrame()
     if sliderText then
         sliderText:SetText(DIFF_LABELS[Rustcore.GetSetting("difficulty")])
         sliderText:ClearAllPoints()
-        sliderText:SetPoint("BOTTOM", sliderTrack, "TOP", 0, 12)
-        sliderText:SetJustifyH("CENTER")
-        sliderText:SetWidth(284)
+        sliderText:SetPoint("LEFT", diffHeader, "RIGHT", 10, 0)
+        sliderText:SetJustifyH("LEFT")
+        sliderText:SetWidth(120)
     end
     f.sliderText = sliderText
 
@@ -222,7 +222,7 @@ local function BuildOptionsFrame()
     queueHeader:SetText("Death Penalty Queue")
 
     local queueBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    queueBtn:SetSize(300, 28)
+    queueBtn:SetSize(260, 28)
     queueBtn:SetPoint("TOPLEFT", queueHeader, "BOTTOMLEFT", 0, -8)
     queueBtn:SetScript("OnClick", function()
         f:Hide()

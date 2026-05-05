@@ -91,7 +91,7 @@ local function BuildSpinRow(parent, yOffset, targetSlot, targetTex, allIcons, ch
     -- Container for the whole row (arrow + strip)
     local row = CreateFrame("Frame", nil, parent)
     row:SetSize(STRIP_W, STRIP_H + ARROW_H + 6)
-    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
+    row:SetPoint("TOP", parent, "TOP", 0, yOffset)
 
     -- Arrow pointing down at center
     local arrow = row:CreateTexture(nil, "OVERLAY")
@@ -149,6 +149,33 @@ local function BuildSpinRow(parent, yOffset, targetSlot, targetTex, allIcons, ch
     return row
 end
 
+local function QueueCenterHighlight(row)
+    C_Timer.After(0, function()
+        if not row or not row.iconFrames then return end
+        if row.highlightFrame and row.highlightFrame.tex then
+            row.highlightFrame.tex:SetVertexColor(1, 0.15, 0.15, 1)
+        else
+            local step    = row.step
+            local centerX = STRIP_W / 2 - ICON_SIZE / 2
+            local off     = row.offset % (row.totalIcons * step)
+            local bestFrame, bestDist = nil, math.huge
+            for i, ic in ipairs(row.iconFrames) do
+                local x = (i - 1) * step - off
+                if x < -step then x = x + row.totalIcons * step end
+                local dist = math.abs(x - centerX)
+                if dist < bestDist then
+                    bestDist  = dist
+                    bestFrame = ic
+                end
+            end
+            if bestFrame and bestFrame.tex then
+                row.highlightFrame = bestFrame
+                bestFrame.tex:SetVertexColor(1, 0.15, 0.15, 1)
+            end
+        end
+    end)
+end
+
 -- Reposition all icon frames given current row.offset
 local function UpdateRowPositions(row)
     local step = row.step
@@ -160,13 +187,15 @@ local function UpdateRowPositions(row)
         end
         ic.tex:SetPoint("LEFT", row.clip, "LEFT", x, (STRIP_H - ICON_SIZE)/2)
 
-        -- Each frame always owns the same logical slot (frame i → icon i mod total).
-        -- Position-independent: wrapping moves the frame but not its content assignment.
         local logIdx = ((i - 1) % row.totalIcons) + 1
         local src = row.allIcons[logIdx]
         ic.tex:SetTexture(src and src.tex or "Interface\\Icons\\INV_Misc_QuestionMark")
         ic.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         ic.tex:SetVertexColor(1, 1, 1, 1)
+    end
+    -- Re-apply highlight if MarkCenterIcon already ran for this row
+    if row.highlightFrame then
+        row.highlightFrame.tex:SetVertexColor(1, 0.15, 0.15, 1)
     end
 end
 
@@ -178,6 +207,9 @@ local function MarkCenterIcon(row)
     local centerX = STRIP_W / 2 - ICON_SIZE / 2
     local off     = row.offset % (row.totalIcons * step)
     local bestFrame, bestDist = nil, math.huge
+    if row.highlightFrame and row.highlightFrame.tex then
+        row.highlightFrame.tex:SetVertexColor(1, 1, 1, 1)
+    end
     for i, ic in ipairs(row.iconFrames) do
         local x = (i - 1) * step - off
         if x < -step then x = x + row.totalIcons * step end
@@ -188,6 +220,7 @@ local function MarkCenterIcon(row)
         end
     end
     if bestFrame then
+        row.highlightFrame = bestFrame
         bestFrame.tex:SetVertexColor(1, 0.15, 0.15, 1)
     end
 end
@@ -229,7 +262,9 @@ local function StartSpinAnimations(spinRows, onAllDone)
         row.isFirst      = (idx == 1)
     end
 
-    PlaySoundFile("Interface\\AddOns\\GearCore\\Spinsound.wav", "Master")
+    C_Timer.After(0.5, function()
+        PlaySoundFile("Interface\\AddOns\\GearCore\\Spinsound.wav", "Master")
+    end)
 
     local doneCount = 0
     local ticker
@@ -246,7 +281,10 @@ local function StartSpinAnimations(spinRows, onAllDone)
                     row.done     = true
                     row.spinning = false
                     UpdateRowPositions(row)
-                    if row.isFirst then MarkCenterIcon(row) end
+                    if row.isFirst then
+                        MarkCenterIcon(row)
+                        QueueCenterHighlight(row)
+                    end
                     doneCount = doneCount + 1
                     if doneCount >= #spinRows then
                         ticker:Cancel()
@@ -345,7 +383,10 @@ local function SnapRowToFinal(row, highlight)
     local centerTarget = STRIP_W / 2 - ICON_SIZE / 2
     row.offset = (row.chosenIndex - 1) * row.step - centerTarget
     UpdateRowPositions(row)
-    if highlight then MarkCenterIcon(row) end
+    if highlight then
+        MarkCenterIcon(row)
+        QueueCenterHighlight(row)
+    end
 end
 
 PopulateSpinUI = function(items, skipAnim)
