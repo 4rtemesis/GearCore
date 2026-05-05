@@ -6,7 +6,7 @@
 ## IconTexture: Interface\AddOns\Rustcore\RCicon.png
 ## SavedVariables: RustcoreDB
 
-GearCore.lua
-GearCoreBroadcast.lua
-GearCoreOptions.lua
-GearCoreUI.lua
+Rustcore.lua
+RustcoreBroadcast.lua
+RustcoreOptions.lua
+RustcoreUI.lua

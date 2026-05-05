@@ -4,9 +4,6 @@
 
 RustcoreUI = {}
 
--- Keep GearCoreUI as alias so GearCore.lua broadcast calls still resolve
--- (GearCore.lua references RustcoreUI directly after rename, but just in case)
-GearCoreUI = RustcoreUI
 
 local deleteFrame
 local pendingItems = {}
@@ -298,7 +295,7 @@ local function StartSpinAnimations(spinRows, onAllDone)
         for _, row in ipairs(spinRows) do
             if row.spinning and not row.soundPlayed and now >= (row.startTime + 0.5) then
                 row.soundPlayed = true
-                PlaySoundFile("Interface\\AddOns\\Rustcore\\Spinsound.wav", "Master")
+                PlaySoundFile(Rustcore.GetAssetPath("Spinsound.wav"), "Master")
             end
             if row.spinning and not row.done then
                 local elapsed = now - row.startTime
@@ -983,7 +980,7 @@ function RustcoreUI.ExecuteDeletion()
         return
     end
 
-    PlaySoundFile("Interface\\AddOns\\Rustcore\\Breaksound.flac", "Master")
+    PlaySoundFile(Rustcore.GetAssetPath("Breaksound.flac"), "Master")
 
     local item = pendingItems[1]
     local frameHiddenForProcessing = false

@@ -55,6 +55,11 @@ function Rustcore.GetCharacterKey()
     return GetCurrentCharacterKey()
 end
 
+function Rustcore.GetAssetPath(filename)
+    local folder = Rustcore.assetFolder or "Rustcore"
+    return "Interface\\AddOns\\" .. folder .. "\\" .. filename
+end
+
 function Rustcore.SetSetting(key, value)
     if Rustcore.SettingsLocked() then
         print("|cffff4444Rustcore:|r Settings cannot be changed while in combat.")
@@ -167,18 +172,14 @@ local function BuildMarkedItems(source)
 end
 
 local function OnPlayerDead()
-    print("|cffff4444Rustcore DEBUG:|r OnPlayerDead called.")
     local ok, err = pcall(function()
         local source = (#combatSnapshot > 0) and combatSnapshot or nil
-        print("|cffff4444Rustcore DEBUG:|r snapshot=" .. #combatSnapshot)
         if not source then
             TakeSnapshot()
             source = combatSnapshot
-            print("|cffff4444Rustcore DEBUG:|r fallback snapshot=" .. #source)
         end
 
         BuildMarkedItems(source)
-        print("|cffff4444Rustcore DEBUG:|r marked=" .. #markedItems)
 
         if #markedItems > 0 then
             RustcoreDB.pendingDeletion = {}
@@ -263,7 +264,7 @@ local function CreateMinimapButton()
     bg:SetVertexColor(0.15, 0.15, 0.15)
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetTexture("Interface\\AddOns\\Rustcore\\RCicon.png")
+    icon:SetTexture(Rustcore.GetAssetPath("RCicon.png"))
     icon:SetSize(17, 17)
     icon:SetPoint("CENTER", btn, "CENTER", -12, 13)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -335,7 +336,8 @@ eventFrame:RegisterEvent("MERCHANT_CLOSED")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
-        if (...) == "GearCore" or (...) == "Rustcore" then
+        if (...) == "Rustcore" then
+            Rustcore.assetFolder = (...)
             InitSettings()
             RustcoreBroadcast.Init()
             CreateMinimapButton()
@@ -367,7 +369,6 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         end
 
     elseif event == "PLAYER_DEAD" then
-        print("|cffff4444Rustcore DEBUG:|r PLAYER_DEAD event received.")
         isDead = true
         OnPlayerDead()
 
@@ -462,15 +463,6 @@ end
 
 SLASH_RUSTCORE1 = "/rustcore"
 SLASH_RUSTCORE2 = "/rc"
-SlashCmdList["RUSTCORE"] = function(msg)
-    if msg == "test" then
-        print("|cffff4444Rustcore:|r Simulating death...")
-        wipe(combatSnapshot)
-        OnPlayerDead()
-    elseif msg == "broadcast" then
-        print("|cffff4444Rustcore:|r Simulating incoming death broadcast...")
-        RustcoreBroadcast.SimulateDeath()
-    else
-        RustcoreOptions.Toggle()
-    end
+SlashCmdList["RUSTCORE"] = function()
+    RustcoreOptions.Toggle()
 end
