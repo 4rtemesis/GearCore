@@ -100,7 +100,7 @@ local function BuildOptionsFrame()
 
     -- ── Difficulty section ────────────────────────────────────────────────────
     local diffHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    diffHeader:SetPoint("TOPLEFT", f, "TOPLEFT", 24, -52)
+    diffHeader:SetPoint("TOPLEFT", f, "TOPLEFT", 69, -52)
     diffHeader:SetText("Difficulty Mode")
 
     -- Five-step slider (1=Lite, 2=Normal, 3=Hard, 4=Brutal, 5=Extreme)

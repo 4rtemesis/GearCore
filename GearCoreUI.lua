@@ -16,6 +16,7 @@ local processingTicker
 local statusUpdateTicker
 local savedBtnX, savedBtnY
 local frameBottomAnchorX, frameBottomAnchorY
+local activeSpinIcons
 local GetDeletePopupFrame
 local FinishQueue
 local ShowActiveFrame
@@ -105,6 +106,13 @@ local function BuildSpinRow(parent, yOffset, targetSlot, targetTex, allIcons, ch
     clip:SetPoint("TOP", row, "TOP", 0, -(ARROW_H + 6))
     clip:SetClipsChildren(true)
 
+    local selectedOverlay = clip:CreateTexture(nil, "OVERLAY")
+    selectedOverlay:SetSize(ICON_SIZE, ICON_SIZE)
+    selectedOverlay:SetPoint("CENTER", clip, "CENTER", 0, 0)
+    selectedOverlay:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    selectedOverlay:SetVertexColor(1, 0.15, 0.15, 1)
+    selectedOverlay:Hide()
+
     -- Left/right fade overlays (drawn on top of icons)
     local fadeL = clip:CreateTexture(nil, "OVERLAY")
     fadeL:SetSize(FADE_W, STRIP_H)
@@ -134,6 +142,7 @@ local function BuildSpinRow(parent, yOffset, targetSlot, targetTex, allIcons, ch
     end
 
     row.clip        = clip
+    row.selectedOverlay = selectedOverlay
     row.iconFrames  = iconFrames
     row.allIcons    = allIcons
     row.totalIcons  = totalIcons
@@ -151,27 +160,12 @@ end
 
 local function QueueCenterHighlight(row)
     C_Timer.After(0, function()
-        if not row or not row.iconFrames then return end
-        if row.highlightFrame and row.highlightFrame.tex then
-            row.highlightFrame.tex:SetVertexColor(1, 0.15, 0.15, 1)
+        if not row or not row.selectedOverlay then return end
+        if row.isFirst and row.targetTex then
+            row.selectedOverlay:SetTexture(row.targetTex)
+            row.selectedOverlay:Show()
         else
-            local step    = row.step
-            local centerX = STRIP_W / 2 - ICON_SIZE / 2
-            local off     = row.offset % (row.totalIcons * step)
-            local bestFrame, bestDist = nil, math.huge
-            for i, ic in ipairs(row.iconFrames) do
-                local x = (i - 1) * step - off
-                if x < -step then x = x + row.totalIcons * step end
-                local dist = math.abs(x - centerX)
-                if dist < bestDist then
-                    bestDist  = dist
-                    bestFrame = ic
-                end
-            end
-            if bestFrame and bestFrame.tex then
-                row.highlightFrame = bestFrame
-                bestFrame.tex:SetVertexColor(1, 0.15, 0.15, 1)
-            end
+            row.selectedOverlay:Hide()
         end
     end)
 end
@@ -193,9 +187,8 @@ local function UpdateRowPositions(row)
         ic.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         ic.tex:SetVertexColor(1, 1, 1, 1)
     end
-    -- Re-apply highlight if MarkCenterIcon already ran for this row
-    if row.highlightFrame then
-        row.highlightFrame.tex:SetVertexColor(1, 0.15, 0.15, 1)
+    if row.selectedOverlay then
+        row.selectedOverlay:Hide()
     end
 end
 
@@ -203,25 +196,13 @@ end
 -- Recomputes positions with the same math as UpdateRowPositions so the result
 -- is never stale from a previous SetPoint call.
 local function MarkCenterIcon(row)
-    local step    = row.step
-    local centerX = STRIP_W / 2 - ICON_SIZE / 2
-    local off     = row.offset % (row.totalIcons * step)
-    local bestFrame, bestDist = nil, math.huge
-    if row.highlightFrame and row.highlightFrame.tex then
-        row.highlightFrame.tex:SetVertexColor(1, 1, 1, 1)
-    end
-    for i, ic in ipairs(row.iconFrames) do
-        local x = (i - 1) * step - off
-        if x < -step then x = x + row.totalIcons * step end
-        local dist = math.abs(x - centerX)
-        if dist < bestDist then
-            bestDist  = dist
-            bestFrame = ic
+    if row.selectedOverlay then
+        if row.isFirst and row.targetTex then
+            row.selectedOverlay:SetTexture(row.targetTex)
+            row.selectedOverlay:Show()
+        else
+            row.selectedOverlay:Hide()
         end
-    end
-    if bestFrame then
-        row.highlightFrame = bestFrame
-        bestFrame.tex:SetVertexColor(1, 0.15, 0.15, 1)
     end
 end
 
@@ -260,11 +241,8 @@ local function StartSpinAnimations(spinRows, onAllDone)
         row.spinning     = true
         row.done         = false
         row.isFirst      = (idx == 1)
+        row.soundPlayed  = false
     end
-
-    C_Timer.After(0.5, function()
-        PlaySoundFile("Interface\\AddOns\\GearCore\\Spinsound.wav", "Master")
-    end)
 
     local doneCount = 0
     local ticker
@@ -272,6 +250,10 @@ local function StartSpinAnimations(spinRows, onAllDone)
     local function tickFunc()
         local now = GetTime()
         for _, row in ipairs(spinRows) do
+            if row.spinning and not row.soundPlayed and now >= (row.startTime + 0.5) then
+                row.soundPlayed = true
+                PlaySoundFile("Interface\\AddOns\\GearCore\\Spinsound.wav", "Master")
+            end
             if row.spinning and not row.done then
                 local elapsed = now - row.startTime
                 if elapsed < 0 then
@@ -393,7 +375,7 @@ PopulateSpinUI = function(items, skipAnim)
     local f = EnsureFrame()
     ClearSpinRows()
 
-    local allIcons = GetEquippedIconList()
+    local allIcons = activeSpinIcons or GetEquippedIconList()
     if #allIcons == 0 then return end
 
     local rowH   = STRIP_H + ARROW_H + 6
@@ -426,8 +408,9 @@ PopulateSpinUI = function(items, skipAnim)
         end
 
         local yOff = -((i-1) * (rowH + ROW_SPACING))
-        local tex  = GetInventoryItemTexture("player", item.slot)
+        local tex  = item.tex or GetInventoryItemTexture("player", item.slot)
         local row  = BuildSpinRow(f.rowContainer, yOff, item.slot, tex, allIcons, chosenIdx)
+        row.isFirst = (i == 1)
         row:Show()
         f.spinRows[i] = row
         spinRows[i]   = row
@@ -607,9 +590,23 @@ end
 -- ── Public API ────────────────────────────────────────────────────────────────
 
 function RustcoreUI.ShowDeletionFrame(items)
+    local sourceItems = {}
+    local reuseSpinIcons = (items == pendingItems and activeSpinIcons and #activeSpinIcons > 0)
+    for _, item in ipairs(items) do
+        sourceItems[#sourceItems + 1] = item
+    end
+
     frameBottomAnchorX, frameBottomAnchorY = nil, nil  -- fresh death: re-center
     wipe(pendingItems)
-    for _, item in ipairs(items) do pendingItems[#pendingItems+1] = item end
+    activeSpinIcons = reuseSpinIcons and activeSpinIcons or GetEquippedIconList()
+    for _, item in ipairs(sourceItems) do
+        pendingItems[#pendingItems+1] = {
+            slot = item.slot,
+            link = item.link,
+            name = item.name,
+            tex  = item.tex or GetInventoryItemTexture("player", item.slot),
+        }
+    end
     awaitingConfirmation = false
     cursorArmed = false
     SyncPendingDeletionDB()
@@ -653,6 +650,7 @@ FinishQueue = function()
     SyncPendingDeletionDB()
 
     if #pendingItems == 0 then
+        activeSpinIcons = nil
         print("|cffff4444Rustcore:|r Deletion complete — all marked items processed.")
         ClearSpinRows()
         if deleteFrame then
@@ -680,6 +678,7 @@ RemoveFirstPendingItem = function()
     StopStatusUpdateTicker()
 
     if #pendingItems == 0 then
+        activeSpinIcons = nil
         print("|cffff4444Rustcore:|r Deletion complete — all marked items processed.")
         ClearSpinRows()
         if deleteFrame then
