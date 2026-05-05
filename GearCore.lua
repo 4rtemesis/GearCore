@@ -26,6 +26,7 @@ local combatSnapshot  = {}   -- items recorded on combat entry
 local markedItems     = {}   -- items selected for deletion after death
 local isDead          = false
 local lastDeathSource = nil  -- last attacker/environment that hit the player
+local minimapButton
 
 -- ── Settings ──────────────────────────────────────────────────────────────────
 
@@ -210,6 +211,73 @@ end
 
 -- ── Event handling ────────────────────────────────────────────────────────────
 
+local function UpdateMinimapButtonPosition()
+    if not minimapButton then return end
+    local angle = (RustcoreDB.minimapAngle or 220) * math.pi / 180
+    local radius = 78
+    minimapButton:ClearAllPoints()
+    minimapButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+end
+
+local function CreateMinimapButton()
+    if minimapButton or not Minimap then return end
+
+    local btn = CreateFrame("Button", "RustcoreMinimapButton", Minimap)
+    btn:SetSize(32, 32)
+    btn:SetFrameStrata("MEDIUM")
+    btn:SetMovable(true)
+    btn:EnableMouse(true)
+    btn:RegisterForDrag("LeftButton")
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+    local icon = btn:CreateTexture(nil, "BACKGROUND")
+    icon:SetTexture("Interface\\AddOns\\GearCore\\RCicon.png")
+    icon:SetSize(20, 20)
+    icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    btn.icon = icon
+
+    local overlay = btn:CreateTexture(nil, "OVERLAY")
+    overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    overlay:SetSize(54, 54)
+    overlay:SetPoint("CENTER", btn, "CENTER", 0, 0)
+
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Rustcore")
+        GameTooltip:AddLine("Left-click: Open options", 1, 1, 1)
+        GameTooltip:AddLine("Right-click: Show pending deletions", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    btn:SetScript("OnClick", function(_, button)
+        if button == "RightButton" then
+            RustcoreUI.ReopenDeletionFrame()
+        else
+            RustcoreOptions.Toggle()
+        end
+    end)
+    btn:SetScript("OnDragStart", function(self)
+        self.dragging = true
+        self:SetScript("OnUpdate", function(frame)
+            local mx, my = Minimap:GetCenter()
+            local cx, cy = GetCursorPosition()
+            local scale = UIParent:GetScale()
+            cx, cy = cx / scale, cy / scale
+            RustcoreDB.minimapAngle = math.deg(math.atan2(cy - my, cx - mx))
+            UpdateMinimapButtonPosition()
+        end)
+    end)
+    btn:SetScript("OnDragStop", function(self)
+        self.dragging = nil
+        self:SetScript("OnUpdate", nil)
+    end)
+
+    minimapButton = btn
+    UpdateMinimapButtonPosition()
+end
+
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -228,6 +296,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         if (...) == "GearCore" or (...) == "Rustcore" then
             InitSettings()
             RustcoreBroadcast.Init()
+            CreateMinimapButton()
             print("|cffff4444Rustcore|r loaded. |cffffd700/rustcore|r for options.")
 
             if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then

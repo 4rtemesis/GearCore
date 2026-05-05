@@ -24,6 +24,7 @@ local GetTrackedItemState
 local RemoveFirstPendingItem
 local RefreshButtonState
 local ResolveProcessingState
+local BeginProcessingMonitor
 local PopulateSpinUI
 local ClearSpinRows
 local LinksMatch
@@ -770,6 +771,17 @@ local function HideProcessingFrame()
     end
 end
 
+local function TriggerCursorDeletion()
+    cursorArmed = false
+    awaitingConfirmation = false
+    DeleteCursorItem()
+    awaitingConfirmation = GetDeletePopupFrame() and true or false
+    if awaitingConfirmation then
+        PositionDeletePopup()
+    end
+    BeginProcessingMonitor()
+end
+
 -- ── Processing state machine (unchanged logic) ────────────────────────────────
 
 ResolveProcessingState = function()
@@ -871,12 +883,7 @@ local function BeginArmMonitor()
 
         if CursorHasItem() then
             StopProcessingTicker()
-            cursorArmed = false
-            awaitingConfirmation = false
-            DeleteCursorItem()
-            awaitingConfirmation = GetDeletePopupFrame() and true or false
-            if awaitingConfirmation then PositionDeletePopup() end
-            BeginProcessingMonitor()
+            TriggerCursorDeletion()
             return
         end
 
@@ -1018,18 +1025,20 @@ function RustcoreUI.ExecuteDeletion()
             RefreshButtonState()
             return
         end
-        cursorArmed = false
-        awaitingConfirmation = false
-        DeleteCursorItem()
-        awaitingConfirmation = GetDeletePopupFrame() and true or false
-        if awaitingConfirmation then PositionDeletePopup() end
-        BeginProcessingMonitor()
+        TriggerCursorDeletion()
         return
     end
 
     ClearCursor()
     BeginArmMonitor()
     BagPickupItem(bag, bagSlot)
+    C_Timer.After(0.05, function()
+        if pendingItems[1] ~= item then return end
+        if CursorHasItem() then
+            StopProcessingTicker()
+            TriggerCursorDeletion()
+        end
+    end)
 end
 
 function RustcoreUI.GetPendingCount()
