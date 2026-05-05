@@ -540,11 +540,13 @@ end
 local function SyncPendingDeletionDB()
     if #pendingItems > 0 then
         RustcoreDB.pendingDeletion = {}
+        RustcoreDB.pendingDeletionOwner = Rustcore.GetCharacterKey and Rustcore.GetCharacterKey() or RustcoreDB.pendingDeletionOwner
         for i, item in ipairs(pendingItems) do
-            RustcoreDB.pendingDeletion[i] = { slot=item.slot, link=item.link, name=item.name }
+            RustcoreDB.pendingDeletion[i] = { slot=item.slot, link=item.link, name=item.name, tex=item.tex }
         end
     else
         RustcoreDB.pendingDeletion = nil
+        RustcoreDB.pendingDeletionOwner = nil
     end
 end
 
@@ -701,6 +703,7 @@ FinishQueue = function()
     if #pendingItems == 0 then
         activeSpinIcons = nil
         RustcoreDB.pendingDeletionSnapshot = nil
+        RustcoreDB.pendingDeletionOwner = nil
         print("|cffff4444Rustcore:|r Deletion complete — all marked items processed.")
         ClearSpinRows()
         if deleteFrame then
@@ -730,6 +733,7 @@ RemoveFirstPendingItem = function()
     if #pendingItems == 0 then
         activeSpinIcons = nil
         RustcoreDB.pendingDeletionSnapshot = nil
+        RustcoreDB.pendingDeletionOwner = nil
         print("|cffff4444Rustcore:|r Deletion complete — all marked items processed.")
         ClearSpinRows()
         if deleteFrame then
@@ -782,6 +786,27 @@ local function TriggerCursorDeletion()
     BeginProcessingMonitor()
 end
 
+local function ResolveDeletionWithRetry(item, remaining, delay)
+    C_Timer.After(delay or 0.2, function()
+        if not pendingItems[1] or pendingItems[1] ~= item then return end
+        local equippedRetry, bagRetry = GetTrackedItemState(item)
+        if not equippedRetry and not bagRetry and not CursorHasItem() then
+            cursorArmed = false
+            awaitingConfirmation = false
+            RemoveFirstPendingItem()
+            return
+        end
+        if (remaining or 0) > 0 then
+            ResolveDeletionWithRetry(item, remaining - 1, delay)
+            return
+        end
+        cursorArmed = false
+        awaitingConfirmation = false
+        RefreshButtonState()
+        print("|cffff4444Rustcore:|r Item was not deleted. Click again to retry.")
+    end)
+end
+
 -- ── Processing state machine (unchanged logic) ────────────────────────────────
 
 ResolveProcessingState = function()
@@ -801,27 +826,7 @@ ResolveProcessingState = function()
     end
 
     ShowActiveFrame()
-
-    local function CheckDeleteRetry(remaining)
-        if not pendingItems[1] or pendingItems[1] ~= item then return end
-        local equippedRetry, bagRetry = GetTrackedItemState(item)
-        if not equippedRetry and not bagRetry then
-            cursorArmed = false
-            awaitingConfirmation = false
-            RemoveFirstPendingItem()
-            return
-        end
-        if remaining > 0 then
-            C_Timer.After(0.15, function() CheckDeleteRetry(remaining - 1) end)
-            return
-        end
-        cursorArmed = false
-        awaitingConfirmation = false
-        RefreshButtonState()
-        print("|cffff4444Rustcore:|r Item was not deleted. Click again to retry.")
-    end
-
-    C_Timer.After(0.15, function() CheckDeleteRetry(3) end)
+    ResolveDeletionWithRetry(item, 7, 0.2)
 end
 
 local function BeginProcessingMonitor()
@@ -990,6 +995,12 @@ function RustcoreUI.ExecuteDeletion()
         end
     end
 
+    if CursorHasItem() and not awaitingConfirmation then
+        HideNow()
+        TriggerCursorDeletion()
+        return
+    end
+
     if awaitingConfirmation then
         if GetDeletePopupFrame() then
             PositionDeletePopup()
@@ -1030,8 +1041,12 @@ function RustcoreUI.ExecuteDeletion()
     end
 
     ClearCursor()
-    BeginArmMonitor()
     BagPickupItem(bag, bagSlot)
+    if CursorHasItem() then
+        TriggerCursorDeletion()
+        return
+    end
+    BeginArmMonitor()
     C_Timer.After(0.05, function()
         if pendingItems[1] ~= item then return end
         if CursorHasItem() then

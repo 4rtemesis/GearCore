@@ -6,6 +6,16 @@ RustcoreDB = RustcoreDB or {}
 
 Rustcore = {}
 
+local function GetCurrentCharacterKey()
+    local guid = UnitGUID and UnitGUID("player")
+    if guid and guid ~= "" then return guid end
+    local name, realm = UnitFullName and UnitFullName("player")
+    if name and realm and realm ~= "" then
+        return name .. "-" .. realm
+    end
+    return UnitName("player")
+end
+
 local defaults = {
     difficulty      = 2,     -- 1=Lite, 2=Normal, 3=Hard, 4=Brutal, 5=Extreme
     selfFound       = false, -- block mailbox / AH / trade
@@ -39,6 +49,10 @@ end
 
 function Rustcore.SettingsLocked()
     return InCombatLockdown and InCombatLockdown()
+end
+
+function Rustcore.GetCharacterKey()
+    return GetCurrentCharacterKey()
 end
 
 function Rustcore.SetSetting(key, value)
@@ -169,6 +183,7 @@ local function OnPlayerDead()
         if #markedItems > 0 then
             RustcoreDB.pendingDeletion = {}
             RustcoreDB.pendingDeletionSnapshot = {}
+            RustcoreDB.pendingDeletionOwner = GetCurrentCharacterKey()
             for _, item in ipairs(markedItems) do
                 RustcoreDB.pendingDeletion[#RustcoreDB.pendingDeletion+1] = {
                     slot = item.slot, link = item.link, name = item.name, tex = item.tex,
@@ -209,6 +224,17 @@ local function ResetRepairButtons()
     if MerchantRepairItemButton then MerchantRepairItemButton:Enable(); MerchantRepairItemButton:SetAlpha(1) end
 end
 
+local function ClearPendingDeletionData()
+    RustcoreDB.pendingDeletion = nil
+    RustcoreDB.pendingDeletionSnapshot = nil
+    RustcoreDB.pendingDeletionOwner = nil
+    RustcoreDB.lastDeathSource = nil
+end
+
+local function PendingDeletionBelongsToCurrentCharacter()
+    return RustcoreDB.pendingDeletionOwner == nil or RustcoreDB.pendingDeletionOwner == GetCurrentCharacterKey()
+end
+
 -- ── Event handling ────────────────────────────────────────────────────────────
 
 local function UpdateMinimapButtonPosition()
@@ -230,11 +256,27 @@ local function CreateMinimapButton()
     btn:RegisterForDrag("LeftButton")
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
-    local icon = btn:CreateTexture(nil, "BACKGROUND")
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Minimap\\MiniMap-TrackingBackground")
+    bg:SetSize(20, 20)
+    bg:SetPoint("CENTER", btn, "CENTER", 0, 1)
+    bg:SetVertexColor(0.15, 0.15, 0.15)
+
+    local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetTexture("Interface\\AddOns\\GearCore\\RCicon.png")
-    icon:SetSize(20, 20)
-    icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    icon:SetSize(17, 17)
+    icon:SetPoint("CENTER", btn, "CENTER", -1, 1)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
+
+    if btn.CreateMaskTexture and icon.AddMaskTexture then
+        local mask = btn:CreateMaskTexture()
+        mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetPoint("CENTER", icon, "CENTER", 0, 0)
+        mask:SetSize(17, 17)
+        icon:AddMaskTexture(mask)
+        btn.iconMask = mask
+    end
 
     local overlay = btn:CreateTexture(nil, "OVERLAY")
     overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
@@ -298,6 +340,10 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             RustcoreBroadcast.Init()
             CreateMinimapButton()
             print("|cffff4444Rustcore|r loaded. |cffffd700/rustcore|r for options.")
+
+            if RustcoreDB.pendingDeletion and not PendingDeletionBelongsToCurrentCharacter() then
+                ClearPendingDeletionData()
+            end
 
             if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then
                 if UnitIsDeadOrGhost("player") then
