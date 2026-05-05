@@ -16,6 +16,10 @@ local DIFF_DESCS  = {
 
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
 
+local function SettingsLocked()
+    return Rustcore and Rustcore.SettingsLocked and Rustcore.SettingsLocked()
+end
+
 local function ApplyDifficultyValue(slider, diffDesc, value)
     local v = math.max(1, math.min(5, math.floor(value + 0.5)))
     if math.abs((slider:GetValue() or v) - v) > 0.001 then
@@ -23,7 +27,13 @@ local function ApplyDifficultyValue(slider, diffDesc, value)
         return
     end
 
-    Rustcore.SetSetting("difficulty", v)
+    if not Rustcore.SetSetting("difficulty", v) then
+        local current = Rustcore.GetSetting("difficulty")
+        if math.abs((slider:GetValue() or current) - current) > 0.001 then
+            slider:SetValue(current)
+        end
+        return
+    end
     local txt = _G[slider:GetName().."Text"]
     if txt then txt:SetText(DIFF_LABELS[v]) end
     diffDesc:SetText(DIFF_DESCS[v])
@@ -55,7 +65,9 @@ local function MakeCheckbox(parent, labelText, tooltipText, anchorTo, yOff, sett
     end
 
     cb:SetScript("OnClick", function(self)
-        Rustcore.SetSetting(settingKey, self:GetChecked() and true or false)
+        if not Rustcore.SetSetting(settingKey, self:GetChecked() and true or false) then
+            cb:Refresh()
+        end
     end)
 
     cb.Refresh = function()
@@ -63,6 +75,38 @@ local function MakeCheckbox(parent, labelText, tooltipText, anchorTo, yOff, sett
     end
 
     return cb
+end
+
+local function RefreshCombatLockState(frame)
+    local locked = SettingsLocked()
+    if frame.diffSlider then
+        if locked then frame.diffSlider:Disable() else frame.diffSlider:Enable() end
+        frame.diffSlider:SetAlpha(locked and 0.5 or 1)
+    end
+
+    local controls = {
+        frame.cbSelfFound,
+        frame.cbWeapon,
+        frame.cbRepair,
+        frame.cbBroadcast,
+        frame.cbShowPopup,
+        frame.cbShowWarning,
+    }
+    for _, control in ipairs(controls) do
+        if control then
+            if locked then control:Disable() else control:Enable() end
+            control:SetAlpha(locked and 0.5 or 1)
+        end
+    end
+
+    if frame.combatNote then
+        if locked then
+            frame.combatNote:SetText("Settings are locked while in combat.")
+            frame.combatNote:Show()
+        else
+            frame.combatNote:Hide()
+        end
+    end
 end
 
 -- ── Frame construction ────────────────────────────────────────────────────────
@@ -151,6 +195,15 @@ local function BuildOptionsFrame()
     diffDesc:SetJustifyH("LEFT")
     diffDesc:SetTextColor(1, 0.82, 0)
     diffDesc:SetText(DIFF_DESCS[Rustcore.GetSetting("difficulty")])
+
+    local combatNote = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    combatNote:SetPoint("TOPRIGHT", f, "TOPRIGHT", -24, -54)
+    combatNote:SetWidth(160)
+    combatNote:SetJustifyH("RIGHT")
+    combatNote:SetTextColor(1, 0.3, 0.3)
+    combatNote:SetText("Settings are locked while in combat.")
+    combatNote:Hide()
+    f.combatNote = combatNote
 
     slider:SetScript("OnValueChanged", function(self, value)
         ApplyDifficultyValue(self, diffDesc, value)
@@ -257,6 +310,15 @@ local function BuildOptionsFrame()
         else
             self.queueBtn:SetText("No Pending Deletions")
             self.queueBtn:Disable()
+        end
+
+        RefreshCombatLockState(self)
+    end)
+
+    f:SetScript("OnUpdate", function(self)
+        if self._combatLocked ~= SettingsLocked() then
+            self._combatLocked = SettingsLocked()
+            RefreshCombatLockState(self)
         end
     end)
 

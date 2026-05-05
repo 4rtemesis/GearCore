@@ -26,6 +26,7 @@ local RefreshButtonState
 local ResolveProcessingState
 local PopulateSpinUI
 local ClearSpinRows
+local LinksMatch
 
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
 
@@ -108,6 +109,17 @@ local function BuildIconListFromItems(items)
     end
 
     return icons
+end
+
+local function GetItemKeyFromLink(link)
+    if not link then return nil end
+    return link:match("|Hitem:([^|]+)|h") or link:match("item:([^|%]]+)") or link
+end
+
+LinksMatch = function(linkA, linkB)
+    local keyA = GetItemKeyFromLink(linkA)
+    local keyB = GetItemKeyFromLink(linkB)
+    return keyA ~= nil and keyA == keyB
 end
 
 -- ── Spin row construction ─────────────────────────────────────────────────────
@@ -655,17 +667,6 @@ function RustcoreUI.ShowDeletionFrame(items, snapshotItems)
     PopulateSpinUI(pendingItems)
     RestoreFrameVisualState()
     RefreshButtonState()
-end
-
-local function GetItemKeyFromLink(link)
-    if not link then return nil end
-    return link:match("|Hitem:([^|]+)|h") or link:match("item:([^|%]]+)") or link
-end
-
-local function LinksMatch(linkA, linkB)
-    local keyA = GetItemKeyFromLink(linkA)
-    local keyB = GetItemKeyFromLink(linkB)
-    return keyA ~= nil and keyA == keyB
 end
 
 local function FindItemInBagsByLink(link)

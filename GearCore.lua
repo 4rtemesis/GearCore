@@ -36,8 +36,17 @@ function Rustcore.GetSetting(key)
     return RustcoreDB[key]
 end
 
+function Rustcore.SettingsLocked()
+    return InCombatLockdown and InCombatLockdown()
+end
+
 function Rustcore.SetSetting(key, value)
+    if Rustcore.SettingsLocked() then
+        print("|cffff4444Rustcore:|r Settings cannot be changed while in combat.")
+        return false
+    end
     RustcoreDB[key] = value
+    return true
 end
 
 local function InitSettings()
