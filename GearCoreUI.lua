@@ -25,6 +25,7 @@ local RemoveFirstPendingItem
 local RefreshButtonState
 local ResolveProcessingState
 local BeginProcessingMonitor
+local ResolveDeletionWithRetry
 local PopulateSpinUI
 local ClearSpinRows
 local LinksMatch
@@ -775,18 +776,21 @@ local function HideProcessingFrame()
     end
 end
 
-local function TriggerCursorDeletion()
+local function TriggerCursorDeletion(item)
     cursorArmed = false
     awaitingConfirmation = false
     DeleteCursorItem()
     awaitingConfirmation = GetDeletePopupFrame() and true or false
     if awaitingConfirmation then
         PositionDeletePopup()
+        BeginProcessingMonitor()
+        return
     end
-    BeginProcessingMonitor()
+    StopProcessingTicker()
+    ResolveDeletionWithRetry(item, 4, 0.05)
 end
 
-local function ResolveDeletionWithRetry(item, remaining, delay)
+ResolveDeletionWithRetry = function(item, remaining, delay)
     C_Timer.After(delay or 0.2, function()
         if not pendingItems[1] or pendingItems[1] ~= item then return end
         local equippedRetry, bagRetry = GetTrackedItemState(item)
@@ -888,7 +892,7 @@ local function BeginArmMonitor()
 
         if CursorHasItem() then
             StopProcessingTicker()
-            TriggerCursorDeletion()
+            TriggerCursorDeletion(item)
             return
         end
 
@@ -997,7 +1001,7 @@ function RustcoreUI.ExecuteDeletion()
 
     if CursorHasItem() and not awaitingConfirmation then
         HideNow()
-        TriggerCursorDeletion()
+        TriggerCursorDeletion(item)
         return
     end
 
@@ -1036,14 +1040,14 @@ function RustcoreUI.ExecuteDeletion()
             RefreshButtonState()
             return
         end
-        TriggerCursorDeletion()
+        TriggerCursorDeletion(item)
         return
     end
 
     ClearCursor()
     BagPickupItem(bag, bagSlot)
     if CursorHasItem() then
-        TriggerCursorDeletion()
+        TriggerCursorDeletion(item)
         return
     end
     BeginArmMonitor()
@@ -1051,7 +1055,7 @@ function RustcoreUI.ExecuteDeletion()
         if pendingItems[1] ~= item then return end
         if CursorHasItem() then
             StopProcessingTicker()
-            TriggerCursorDeletion()
+            TriggerCursorDeletion(item)
         end
     end)
 end

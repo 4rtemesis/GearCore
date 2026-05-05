@@ -259,13 +259,13 @@ local function CreateMinimapButton()
     local bg = btn:CreateTexture(nil, "BACKGROUND")
     bg:SetTexture("Interface\\Minimap\\MiniMap-TrackingBackground")
     bg:SetSize(20, 20)
-    bg:SetPoint("CENTER", btn, "CENTER", 0, 1)
+    bg:SetPoint("CENTER", btn, "CENTER", -1, 2)
     bg:SetVertexColor(0.15, 0.15, 0.15)
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetTexture("Interface\\AddOns\\GearCore\\RCicon.png")
     icon:SetSize(17, 17)
-    icon:SetPoint("CENTER", btn, "CENTER", -1, 1)
+    icon:SetPoint("CENTER", btn, "CENTER", -2, 3)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
 
