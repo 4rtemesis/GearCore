@@ -139,8 +139,8 @@ local function BuildOptionsFrame()
     if sliderText then
         sliderText:SetText(DIFF_LABELS[Rustcore.GetSetting("difficulty")])
         sliderText:ClearAllPoints()
-        sliderText:SetPoint("BOTTOMLEFT", sliderTrack, "TOPLEFT", 0, 12)
-        sliderText:SetJustifyH("LEFT")
+        sliderText:SetPoint("BOTTOM", sliderTrack, "TOP", 0, 12)
+        sliderText:SetJustifyH("CENTER")
         sliderText:SetWidth(284)
     end
     f.sliderText = sliderText

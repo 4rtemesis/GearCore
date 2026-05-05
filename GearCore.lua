@@ -249,7 +249,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then
                 print("|cffff4444Rustcore:|r Resurrection detected — click the Rustcore button to process your pending deletions.")
                 C_Timer.After(1, function()
-                    RustcoreUI.ShowDeletionFrame(RustcoreDB.pendingDeletion)
+                    RustcoreUI.OnResurrect(RustcoreDB.pendingDeletion)
                 end)
             end
         end
@@ -259,7 +259,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then
             print("|cffff4444Rustcore:|r Resurrection detected — click the Rustcore button to process your pending deletions.")
             C_Timer.After(1, function()
-                RustcoreUI.ShowDeletionFrame(RustcoreDB.pendingDeletion)
+                RustcoreUI.OnResurrect(RustcoreDB.pendingDeletion)
             end)
         end
 

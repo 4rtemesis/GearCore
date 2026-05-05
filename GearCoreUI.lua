@@ -15,6 +15,7 @@ local cursorArmed = false
 local processingTicker
 local statusUpdateTicker
 local savedBtnX, savedBtnY
+local frameBottomAnchorX, frameBottomAnchorY
 local GetDeletePopupFrame
 local FinishQueue
 local ShowActiveFrame
@@ -119,8 +120,8 @@ local function BuildSpinRow(parent, yOffset, targetSlot, targetTex, allIcons, ch
 
     -- Build icon pool inside clip: enough to wrap seamlessly
     local totalIcons = #allIcons
-    -- We render 2× the strip width in icons so we can scroll without gaps
-    local visCount = math.ceil(STRIP_W / step) + 6
+    -- Ensure every icon has at least one frame, plus overflow for smooth wrap
+    local visCount = math.max(math.ceil(STRIP_W / step) + 6, totalIcons + 2)
     local iconFrames = {}
     for i = 1, visCount do
         local ic = clip:CreateTexture(nil, "ARTWORK")
@@ -154,14 +155,14 @@ local function UpdateRowPositions(row)
     local off  = row.offset % (row.totalIcons * step)
     for i, ic in ipairs(row.iconFrames) do
         local x = (i-1)*step - off
-        -- Wrap icons that scroll off the left edge to the right
         if x < -step then
             x = x + row.totalIcons * step
         end
         ic.tex:SetPoint("LEFT", row.clip, "LEFT", x, (STRIP_H - ICON_SIZE)/2)
 
-        -- Update texture based on new position's logical index
-        local logIdx = (math.floor((off + (i-1)*step) / step) % row.totalIcons) + 1
+        -- Each frame always owns the same logical slot (frame i → icon i mod total).
+        -- Position-independent: wrapping moves the frame but not its content assignment.
+        local logIdx = ((i - 1) % row.totalIcons) + 1
         local src = row.allIcons[logIdx]
         ic.tex:SetTexture(src and src.tex or "Interface\\Icons\\INV_Misc_QuestionMark")
         ic.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -194,6 +195,15 @@ end
 
 -- ── Animation driver ──────────────────────────────────────────────────────────
 
+local function easeInOutCubic(t)
+    if t < 0.5 then
+        return 4 * t * t * t
+    else
+        local f = -2 * t + 2
+        return 1 - f * f * f / 2
+    end
+end
+
 -- spinRows: list of row objects
 -- onAllDone: callback when every row has settled
 local function StartSpinAnimations(spinRows, onAllDone)
@@ -205,61 +215,53 @@ local function StartSpinAnimations(spinRows, onAllDone)
     local step = (ICON_SIZE + ICON_GAP)
     local totalIcons = spinRows[1].totalIcons
 
-    -- Each row gets a random spin distance so they settle at different times
-    -- and on different icons. They all start fast and decelerate.
-
     for idx, row in ipairs(spinRows) do
-        -- The chosen item should land at center. Center pixel = STRIP_W/2 - ICON_SIZE/2.
-        -- Work out offset so chosenIndex icon is centered, then add full laps.
         local centerTarget = STRIP_W / 2 - ICON_SIZE / 2
-        -- The chosen icon's natural x at offset=0 is (chosenIndex-1)*step
-        -- We want: (chosenIndex-1)*step - finalOffset = centerTarget
-        -- => finalOffset = (chosenIndex-1)*step - centerTarget
         local baseOffset = (row.chosenIndex - 1) * step - centerTarget
-        -- Add 3..6 full laps so it actually spins
-        local laps = 3 + idx  -- stagger completion
+        local laps = 3 + idx
         local finalOffset = baseOffset + laps * totalIcons * step
 
         row.targetOffset = finalOffset
         row.startOffset  = 0
-        row.startTime    = GetTime() + (idx - 1) * 0.3  -- stagger start slightly
-        row.duration     = 3.0 + idx * 0.4              -- each row takes a bit longer
+        row.startTime    = GetTime() + 0.2 + (idx - 1) * 0.35
+        row.duration     = 3.5 + idx * 0.5
         row.spinning     = true
         row.done         = false
     end
 
     local doneCount = 0
+    local ticker
 
-    local ticker = C_Timer.NewTicker(0.016, function()  -- ~60fps
+    local function tickFunc()
         local now = GetTime()
         for _, row in ipairs(spinRows) do
             if row.spinning and not row.done then
                 local elapsed = now - row.startTime
                 if elapsed < 0 then
-                    -- Not started yet
+                    -- not started yet
                 elseif elapsed >= row.duration then
-                    -- Snap to final
-                    row.offset  = row.targetOffset
-                    row.done    = true
+                    row.offset   = row.targetOffset
+                    row.done     = true
                     row.spinning = false
                     UpdateRowPositions(row)
                     MarkCenterIcon(row)
                     doneCount = doneCount + 1
-                    if doneCount >= #spinRows and onAllDone then
-                        onAllDone()
+                    if doneCount >= #spinRows then
+                        ticker:Cancel()
+                        if onAllDone then onAllDone() end
+                        return
                     end
                 else
-                    -- Ease-out cubic: t goes 0→1, speed starts fast and decelerates
-                    local t = elapsed / row.duration
-                    -- ease out cubic: progress = 1 - (1-t)^3
-                    local progress = 1 - (1 - t)^3
+                    local t        = elapsed / row.duration
+                    local progress = easeInOutCubic(t)
                     row.offset = row.startOffset + progress * (row.targetOffset - row.startOffset)
                     UpdateRowPositions(row)
                 end
             end
         end
-    end)
+    end
 
+    ticker = C_Timer.NewTicker(0.016, tickFunc)
     return ticker
 end
 
@@ -337,35 +339,46 @@ ClearSpinRows = function()
     wipe(f.spinRows)
 end
 
-PopulateSpinUI = function(items)
+local function SnapRowToFinal(row)
+    local centerTarget = STRIP_W / 2 - ICON_SIZE / 2
+    row.offset = (row.chosenIndex - 1) * row.step - centerTarget
+    UpdateRowPositions(row)
+    MarkCenterIcon(row)
+end
+
+PopulateSpinUI = function(items, skipAnim)
     local f = EnsureFrame()
     ClearSpinRows()
 
     local allIcons = GetEquippedIconList()
-    if #allIcons == 0 then return end  -- no equipped items (shouldn't happen)
+    if #allIcons == 0 then return end
 
-    local rowH    = STRIP_H + ARROW_H + 6
-    local totalH  = #items * (rowH + ROW_SPACING) - ROW_SPACING
+    local rowH   = STRIP_H + ARROW_H + 6
+    local totalH = #items * (rowH + ROW_SPACING) - ROW_SPACING
+    local frameH = totalH + 140
 
-    -- Resize frame to fit all rows plus header/button space
-    local frameH = math.max(220, totalH + 140)
     f:SetSize(STRIP_W + 60, frameH)
-    f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    f:ClearAllPoints()
+    if frameBottomAnchorX then
+        f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", frameBottomAnchorX, frameBottomAnchorY)
+    else
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
 
     f.rowContainer:SetHeight(totalH)
 
     local spinRows = {}
     for i, item in ipairs(items) do
-        -- Find which icon in allIcons corresponds to item.slot
         local chosenIdx = 1
+        local found = false
         for j, ic in ipairs(allIcons) do
             if ic.slot == item.slot then
                 chosenIdx = j
+                found = true
                 break
             end
         end
-        -- If slot not found (item already unequipped), pick random
-        if chosenIdx == 1 and (not allIcons[1] or allIcons[1].slot ~= item.slot) then
+        if not found then
             chosenIdx = math.random(#allIcons)
         end
 
@@ -377,19 +390,22 @@ PopulateSpinUI = function(items)
         spinRows[i]   = row
     end
 
-    -- Position status + button below the row container
-    local btnY = -(totalH + 20)
     f.rowContainer:SetHeight(totalH)
     f.statusMsg:ClearAllPoints()
     f.statusMsg:SetPoint("TOP", f.rowContainer, "BOTTOM", 0, -14)
     f.deleteBtn:ClearAllPoints()
     f.deleteBtn:SetPoint("TOP", f.rowContainer, "BOTTOM", 0, -38)
 
-    -- Start animations
-    f.spinTicker = StartSpinAnimations(spinRows, function()
-        -- All rows settled — update button state
+    if skipAnim then
+        for _, row in ipairs(spinRows) do
+            SnapRowToFinal(row)
+        end
         RefreshButtonState()
-    end)
+    else
+        f.spinTicker = StartSpinAnimations(spinRows, function()
+            RefreshButtonState()
+        end)
+    end
 end
 
 -- ── Status ticker / button state ──────────────────────────────────────────────
@@ -465,14 +481,18 @@ local function RestoreFrameVisualState()
     local f = EnsureFrame()
     if RustcoreOptions and RustcoreOptions.Hide then RustcoreOptions.Hide() end
 
-    f:ClearAllPoints()
-    f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     f:SetParent(UIParent)
     f:SetAlpha(1)
     f:SetScale(1)
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:Show()
     f:Raise()
+
+    -- Capture bottom anchor on first show so resizes after deletions stay grounded
+    if not frameBottomAnchorX then
+        frameBottomAnchorX = f:GetLeft()
+        frameBottomAnchorY = f:GetBottom()
+    end
 
     StartStatusUpdateTicker()
     return f
@@ -544,6 +564,7 @@ end
 -- ── Public API ────────────────────────────────────────────────────────────────
 
 function RustcoreUI.ShowDeletionFrame(items)
+    frameBottomAnchorX, frameBottomAnchorY = nil, nil  -- fresh death: re-center
     wipe(pendingItems)
     for _, item in ipairs(items) do pendingItems[#pendingItems+1] = item end
     awaitingConfirmation = false
@@ -598,7 +619,11 @@ FinishQueue = function()
         return
     end
 
-    PopulateSpinUI(pendingItems)
+    if deleteFrame then
+        frameBottomAnchorX = deleteFrame:GetLeft()
+        frameBottomAnchorY = deleteFrame:GetBottom()
+    end
+    PopulateSpinUI(pendingItems, true)
     local f = RestoreFrameVisualState()
     RefreshButtonState()
 end
@@ -621,7 +646,12 @@ RemoveFirstPendingItem = function()
         return
     end
 
-    PopulateSpinUI(pendingItems)
+    -- Capture current bottom before resize so the delete button stays put
+    if deleteFrame then
+        frameBottomAnchorX = deleteFrame:GetLeft()
+        frameBottomAnchorY = deleteFrame:GetBottom()
+    end
+    PopulateSpinUI(pendingItems, true)
     local f = EnsureFrame()
     f:Show()
     StartStatusUpdateTicker()
@@ -905,6 +935,17 @@ function RustcoreUI.GetPendingCount()
         return #RustcoreDB.pendingDeletion
     end
     return #pendingItems
+end
+
+-- Called on resurrection: re-enable the button without replaying the spin
+function RustcoreUI.OnResurrect(source)
+    if not source or #source == 0 then return end
+    if deleteFrame and deleteFrame:IsShown() and #deleteFrame.spinRows > 0 then
+        RestoreFrameVisualState()
+        RefreshButtonState()
+    else
+        RustcoreUI.ShowDeletionFrame(source)
+    end
 end
 
 function RustcoreUI.ReopenDeletionFrame()
