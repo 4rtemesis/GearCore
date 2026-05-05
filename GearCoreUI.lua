@@ -227,7 +227,10 @@ local function StartSpinAnimations(spinRows, onAllDone)
         row.duration     = 3.5 + idx * 0.5
         row.spinning     = true
         row.done         = false
+        row.isFirst      = (idx == 1)
     end
+
+    PlaySoundFile("Interface\\AddOns\\GearCore\\Spinsound.mp3", "Master")
 
     local doneCount = 0
     local ticker
@@ -244,7 +247,7 @@ local function StartSpinAnimations(spinRows, onAllDone)
                     row.done     = true
                     row.spinning = false
                     UpdateRowPositions(row)
-                    MarkCenterIcon(row)
+                    if row.isFirst then MarkCenterIcon(row) end
                     doneCount = doneCount + 1
                     if doneCount >= #spinRows then
                         ticker:Cancel()
@@ -339,11 +342,11 @@ ClearSpinRows = function()
     wipe(f.spinRows)
 end
 
-local function SnapRowToFinal(row)
+local function SnapRowToFinal(row, highlight)
     local centerTarget = STRIP_W / 2 - ICON_SIZE / 2
     row.offset = (row.chosenIndex - 1) * row.step - centerTarget
     UpdateRowPositions(row)
-    MarkCenterIcon(row)
+    if highlight then MarkCenterIcon(row) end
 end
 
 PopulateSpinUI = function(items, skipAnim)
@@ -397,8 +400,8 @@ PopulateSpinUI = function(items, skipAnim)
     f.deleteBtn:SetPoint("TOP", f.rowContainer, "BOTTOM", 0, -38)
 
     if skipAnim then
-        for _, row in ipairs(spinRows) do
-            SnapRowToFinal(row)
+        for i, row in ipairs(spinRows) do
+            SnapRowToFinal(row, i == 1)
         end
         RefreshButtonState()
     else
@@ -863,6 +866,8 @@ function RustcoreUI.ExecuteDeletion()
         RefreshButtonState()
         return
     end
+
+    PlaySoundFile("Interface\\AddOns\\GearCore\\Breaksound.flac", "Master")
 
     local item = pendingItems[1]
     local frameHiddenForProcessing = false
