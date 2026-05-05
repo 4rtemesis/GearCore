@@ -622,19 +622,24 @@ function RustcoreUI.ShowDeletionFrame(items)
     RefreshButtonState()
 end
 
-local function GetItemIdFromLink(link)
-    return link and link:match("item:(%d+)")
+local function GetItemKeyFromLink(link)
+    if not link then return nil end
+    return link:match("|Hitem:([^|]+)|h") or link:match("item:([^|%]]+)") or link
+end
+
+local function LinksMatch(linkA, linkB)
+    local keyA = GetItemKeyFromLink(linkA)
+    local keyB = GetItemKeyFromLink(linkB)
+    return keyA ~= nil and keyA == keyB
 end
 
 local function FindItemInBagsByLink(link)
     if not link then return nil, nil end
-    local targetId = GetItemIdFromLink(link)
-    if not targetId then return nil, nil end
 
     for bag = 0, 4 do
         for slot = 1, BagGetNumSlots(bag) do
             local bagLink = BagGetItemLink(bag, slot)
-            if bagLink and GetItemIdFromLink(bagLink) == targetId then
+            if bagLink and LinksMatch(bagLink, link) then
                 return bag, slot
             end
         end
@@ -701,7 +706,7 @@ end
 
 GetTrackedItemState = function(item)
     local equippedLink = GetInventoryItemLink("player", item.slot)
-    if equippedLink and GetItemIdFromLink(equippedLink) ~= GetItemIdFromLink(item.link) then
+    if equippedLink and not LinksMatch(equippedLink, item.link) then
         equippedLink = nil
     end
     local bag, bagSlot = FindItemInBagsByLink(item.link)
