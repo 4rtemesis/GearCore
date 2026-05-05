@@ -170,22 +170,21 @@ local function UpdateRowPositions(row)
     end
 end
 
--- Mark the center icon red (the chosen one) once spinning stops
+-- Mark the center icon red (the chosen one) once spinning stops.
+-- Recomputes positions with the same math as UpdateRowPositions so the result
+-- is never stale from a previous SetPoint call.
 local function MarkCenterIcon(row)
-    local step   = row.step
+    local step    = row.step
     local centerX = STRIP_W / 2 - ICON_SIZE / 2
-    -- Find the icon frame closest to center
+    local off     = row.offset % (row.totalIcons * step)
     local bestFrame, bestDist = nil, math.huge
-    for _, ic in ipairs(row.iconFrames) do
-        local x = ic.tex:GetPoint() -- returns point, relativeTo, relativePoint, xOfs, yOfs
-        -- GetPoint returns 5 values; xOfs is 4th
-        local _, _, _, xOfs = ic.tex:GetPoint()
-        if xOfs then
-            local dist = math.abs(xOfs - centerX)
-            if dist < bestDist then
-                bestDist = dist
-                bestFrame = ic
-            end
+    for i, ic in ipairs(row.iconFrames) do
+        local x = (i - 1) * step - off
+        if x < -step then x = x + row.totalIcons * step end
+        local dist = math.abs(x - centerX)
+        if dist < bestDist then
+            bestDist  = dist
+            bestFrame = ic
         end
     end
     if bestFrame then
@@ -230,7 +229,7 @@ local function StartSpinAnimations(spinRows, onAllDone)
         row.isFirst      = (idx == 1)
     end
 
-    PlaySoundFile("Interface\\AddOns\\GearCore\\Spinsound.mp3", "Master")
+    PlaySoundFile("Interface\\AddOns\\GearCore\\Spinsound.wav", "Master")
 
     local doneCount = 0
     local ticker
