@@ -787,16 +787,19 @@ local function TriggerCursorDeletion(item)
         return
     end
     StopProcessingTicker()
-    ResolveDeletionWithRetry(item, 4, 0.05)
+    ResolveDeletionWithRetry(item, 10, 0.1)
 end
 
 ResolveDeletionWithRetry = function(item, remaining, delay)
     C_Timer.After(delay or 0.2, function()
         if not pendingItems[1] or pendingItems[1] ~= item then return end
         local equippedRetry, bagRetry = GetTrackedItemState(item)
-        if not equippedRetry and not bagRetry and not CursorHasItem() then
+        if not equippedRetry and not bagRetry then
             cursorArmed = false
             awaitingConfirmation = false
+            if CursorHasItem() then
+                ClearCursor()
+            end
             RemoveFirstPendingItem()
             return
         end
