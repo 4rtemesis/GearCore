@@ -141,6 +141,7 @@ local function BuildOptionsFrame()
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    closeBtn:SetFrameLevel(f:GetFrameLevel() + 10)
 
     -- ── Difficulty section ────────────────────────────────────────────────────
     local diffHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -196,9 +197,9 @@ local function BuildOptionsFrame()
     diffDesc:SetTextColor(1, 0.82, 0)
     diffDesc:SetText(DIFF_DESCS[Rustcore.GetSetting("difficulty")])
 
-    local combatNote = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    combatNote:SetPoint("TOP", title, "BOTTOM", 0, -8)
-    combatNote:SetWidth(260)
+    local combatNote = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    combatNote:SetPoint("TOP", title, "BOTTOM", 0, -18)
+    combatNote:SetWidth(320)
     combatNote:SetJustifyH("CENTER")
     combatNote:SetTextColor(1, 0.3, 0.3)
     combatNote:SetText("Settings are locked while in combat.")

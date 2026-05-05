@@ -3,7 +3,7 @@
 ## Notes: Hardcore gear loss on death for WoW Classic
 ## Author: Rustcore
 ## Version: 1.0
-## IconTexture: Interface\AddOns\GearCore\RCicon.png
+## IconTexture: Interface\AddOns\Rustcore\RCicon.png
 ## SavedVariables: RustcoreDB
 
 GearCore.lua

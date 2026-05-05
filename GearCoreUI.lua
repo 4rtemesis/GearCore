@@ -298,7 +298,7 @@ local function StartSpinAnimations(spinRows, onAllDone)
         for _, row in ipairs(spinRows) do
             if row.spinning and not row.soundPlayed and now >= (row.startTime + 0.5) then
                 row.soundPlayed = true
-                PlaySoundFile("Interface\\AddOns\\GearCore\\Spinsound.wav", "Master")
+                PlaySoundFile("Interface\\AddOns\\Rustcore\\Spinsound.wav", "Master")
             end
             if row.spinning and not row.done then
                 local elapsed = now - row.startTime
@@ -983,7 +983,7 @@ function RustcoreUI.ExecuteDeletion()
         return
     end
 
-    PlaySoundFile("Interface\\AddOns\\GearCore\\Breaksound.flac", "Master")
+    PlaySoundFile("Interface\\AddOns\\Rustcore\\Breaksound.flac", "Master")
 
     local item = pendingItems[1]
     local frameHiddenForProcessing = false
