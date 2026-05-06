@@ -37,20 +37,29 @@ local markedItems     = {}   -- items selected for deletion after death
 local isDead          = false
 local lastDeathSource = nil  -- last attacker/environment that hit the player
 local minimapButton
-
-local function GetMinimapRadius()
-    local width = Minimap and Minimap:GetWidth() or 140
-    local height = Minimap and Minimap:GetHeight() or 140
-    local radius = (math.min(width, height) * 0.5) + 10
-    return math.max(64, radius)
-end
+local minimapShapes = {
+    ["ROUND"] = {true, true, true, true},
+    ["SQUARE"] = {false, false, false, false},
+    ["CORNER-TOPLEFT"] = {false, false, false, true},
+    ["CORNER-TOPRIGHT"] = {false, false, true, false},
+    ["CORNER-BOTTOMLEFT"] = {false, true, false, false},
+    ["CORNER-BOTTOMRIGHT"] = {true, false, false, false},
+    ["SIDE-LEFT"] = {false, true, false, true},
+    ["SIDE-RIGHT"] = {true, false, true, false},
+    ["SIDE-TOP"] = {false, false, true, true},
+    ["SIDE-BOTTOM"] = {true, true, false, false},
+    ["TRICORNER-TOPLEFT"] = {false, true, true, true},
+    ["TRICORNER-TOPRIGHT"] = {true, false, true, true},
+    ["TRICORNER-BOTTOMLEFT"] = {true, true, false, true},
+    ["TRICORNER-BOTTOMRIGHT"] = {true, true, true, false},
+}
 
 local function GetMinimapAngleFromCursor()
     local mx, my = Minimap:GetCenter()
-    local scale = UIParent:GetEffectiveScale()
+    local scale = Minimap:GetEffectiveScale()
     local cx, cy = GetCursorPosition()
     cx, cy = cx / scale, cy / scale
-    return math.deg(math.atan2(cy - my, cx - mx))
+    return math.deg(math.atan2(cy - my, cx - mx)) % 360
 end
 
 -- ── Settings ──────────────────────────────────────────────────────────────────
@@ -255,33 +264,50 @@ end
 
 local function UpdateMinimapButtonPosition()
     if not minimapButton then return end
-    local angle = (RustcoreDB.minimapAngle or 220) * math.pi / 180
-    local radius = GetMinimapRadius()
+    local angle = math.rad(RustcoreDB.minimapAngle or 220)
+    local x, y = math.cos(angle), math.sin(angle)
+    local quadrant = 1
+    if x < 0 then quadrant = quadrant + 1 end
+    if y > 0 then quadrant = quadrant + 2 end
+    local minimapShape = GetMinimapShape and GetMinimapShape() or "ROUND"
+    local quadTable = minimapShapes[minimapShape] or minimapShapes["ROUND"]
+    local radius = 5
+    local width = (Minimap:GetWidth() / 2) + radius
+    local height = (Minimap:GetHeight() / 2) + radius
+    if quadTable[quadrant] then
+        x, y = x * width, y * height
+    else
+        local diagWidth = math.sqrt(2 * (width ^ 2)) - 10
+        local diagHeight = math.sqrt(2 * (height ^ 2)) - 10
+        x = math.max(-width, math.min(x * diagWidth, width))
+        y = math.max(-height, math.min(y * diagHeight, height))
+    end
     minimapButton:ClearAllPoints()
-    minimapButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+    minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
 end
 
 local function CreateMinimapButton()
     if minimapButton or not Minimap then return end
 
     local btn = CreateFrame("Button", "RustcoreMinimapButton", Minimap)
-    btn:SetSize(32, 32)
+    btn:SetSize(31, 31)
     btn:SetFrameStrata("MEDIUM")
+    btn:SetFrameLevel(8)
     btn:SetMovable(true)
     btn:EnableMouse(true)
     btn:RegisterForDrag("LeftButton")
-    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:RegisterForClicks("AnyUp")
 
     local bg = btn:CreateTexture(nil, "BACKGROUND")
-    bg:SetTexture("Interface\\Minimap\\MiniMap-TrackingBackground")
+    bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
     bg:SetSize(20, 20)
-    bg:SetPoint("CENTER", btn, "CENTER", -1, 1)
+    bg:SetPoint("TOPLEFT", btn, "TOPLEFT", 7, -5)
     bg:SetVertexColor(0.15, 0.15, 0.15)
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(Rustcore.GetAssetPath("RCicon.png"))
     icon:SetSize(17, 17)
-    icon:SetPoint("CENTER", btn, "CENTER", -1, 1)
+    icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 7, -6)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
 
@@ -296,14 +322,14 @@ local function CreateMinimapButton()
 
     local overlay = btn:CreateTexture(nil, "OVERLAY")
     overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    overlay:SetSize(54, 54)
-    overlay:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    overlay:SetSize(53, 53)
+    overlay:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
 
     btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
     local highlight = btn:GetHighlightTexture()
     highlight:SetBlendMode("ADD")
-    highlight:SetSize(56, 56)
-    highlight:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    highlight:SetSize(53, 53)
+    highlight:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
 
     btn:SetScript("OnEnter", function(self)
         if self:GetHighlightTexture() then
@@ -329,13 +355,15 @@ local function CreateMinimapButton()
         end
     end)
     btn:SetScript("OnDragStart", function(self)
+        self:LockHighlight()
         self.dragging = true
-        self:SetScript("OnUpdate", function(frame)
+        self:SetScript("OnUpdate", function()
             RustcoreDB.minimapAngle = GetMinimapAngleFromCursor()
             UpdateMinimapButtonPosition()
         end)
     end)
     btn:SetScript("OnDragStop", function(self)
+        self:UnlockHighlight()
         self.dragging = nil
         self:SetScript("OnUpdate", nil)
         RustcoreDB.minimapAngle = GetMinimapAngleFromCursor()
