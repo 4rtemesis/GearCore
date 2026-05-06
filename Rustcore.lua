@@ -297,7 +297,7 @@ local function CreateMinimapButton()
     local overlay = btn:CreateTexture(nil, "OVERLAY")
     overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     overlay:SetSize(54, 54)
-    overlay:SetPoint("CENTER", btn, "CENTER", -1, 1)
+    overlay:SetPoint("CENTER", btn, "CENTER", -10, 11)
 
     btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
     local highlight = btn:GetHighlightTexture()
