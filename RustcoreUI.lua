@@ -55,6 +55,8 @@ local STRIP_H     = ICON_SIZE
 local ARROW_H     = 18
 local ROW_SPACING = 10    -- vertical gap between rows
 local FADE_W      = 60    -- width of each fade gradient on edges
+local MAX_ROWS_PER_COLUMN = 9
+local COLUMN_SPACING = 20
 
 -- Collect all currently equipped item textures (for the icon strip)
 local function GetEquippedIconList()
@@ -129,13 +131,13 @@ end
 --   • an arrow pointing at the center
 --   • edge fade overlays
 
-local function BuildSpinRow(parent, yOffset, targetSlot, targetTex, allIcons, chosenIndex)
+local function BuildSpinRow(parent, xOffset, yOffset, targetSlot, targetTex, allIcons, chosenIndex)
     local step = ICON_SIZE + ICON_GAP
 
     -- Container for the whole row (arrow + strip)
     local row = CreateFrame("Frame", nil, parent)
     row:SetSize(STRIP_W, STRIP_H + ARROW_H + 6)
-    row:SetPoint("TOP", parent, "TOP", 0, yOffset)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", xOffset, yOffset)
 
     -- Arrow pointing down at center
     local arrow = row:CreateTexture(nil, "OVERLAY")
@@ -422,10 +424,15 @@ PopulateSpinUI = function(items, skipAnim)
     if #allIcons == 0 then return end
 
     local rowH   = STRIP_H + ARROW_H + 6
-    local totalH = #items * (rowH + ROW_SPACING) - ROW_SPACING
+    local itemCount = #items
+    local columnCount = math.max(1, math.ceil(itemCount / MAX_ROWS_PER_COLUMN))
+    local rowsPerColumn = math.ceil(itemCount / columnCount)
+    local rowsInTallestColumn = math.min(itemCount, rowsPerColumn)
+    local totalH = rowsInTallestColumn * (rowH + ROW_SPACING) - ROW_SPACING
+    local totalW = columnCount * STRIP_W + (columnCount - 1) * COLUMN_SPACING
     local frameH = totalH + 140
 
-    f:SetSize(STRIP_W + 60, frameH)
+    f:SetSize(totalW + 60, frameH)
     f:ClearAllPoints()
     if frameBottomAnchorX then
         f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", frameBottomAnchorX, frameBottomAnchorY)
@@ -433,6 +440,7 @@ PopulateSpinUI = function(items, skipAnim)
         f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     end
 
+    f.rowContainer:SetWidth(totalW)
     f.rowContainer:SetHeight(totalH)
 
     local spinRows = {}
@@ -450,9 +458,12 @@ PopulateSpinUI = function(items, skipAnim)
             chosenIdx = math.random(#allIcons)
         end
 
-        local yOff = -((i-1) * (rowH + ROW_SPACING))
+        local columnIndex = math.floor((i - 1) / rowsPerColumn)
+        local rowIndex = (i - 1) % rowsPerColumn
+        local xOff = columnIndex * (STRIP_W + COLUMN_SPACING)
+        local yOff = -(rowIndex * (rowH + ROW_SPACING))
         local tex  = GetDisplayTexture(item)
-        local row  = BuildSpinRow(f.rowContainer, yOff, item.slot, tex, allIcons, chosenIdx)
+        local row  = BuildSpinRow(f.rowContainer, xOff, yOff, item.slot, tex, allIcons, chosenIdx)
         row.isFirst = (i == 1)
         row:Show()
         f.spinRows[i] = row
@@ -460,10 +471,8 @@ PopulateSpinUI = function(items, skipAnim)
     end
 
     f.rowContainer:SetHeight(totalH)
-    f.statusMsg:ClearAllPoints()
-    f.statusMsg:SetPoint("TOP", f.rowContainer, "BOTTOM", 0, -14)
     f.deleteBtn:ClearAllPoints()
-    f.deleteBtn:SetPoint("TOP", f.rowContainer, "BOTTOM", 0, -38)
+    f.deleteBtn:SetPoint("TOP", f.rowContainer, "BOTTOM", 0, -20)
 
     if skipAnim then
         for i, row in ipairs(spinRows) do
@@ -498,8 +507,7 @@ RefreshButtonState = function()
 
     if UnitIsDeadOrGhost("player") then
         if f.statusMsg then
-            f.statusMsg:Show()
-            f.statusMsg:SetText("Resurrect to delete")
+            f.statusMsg:Hide()
         end
         if f.deleteBtn then
             f.deleteBtn:SetText("Resurrect to delete")

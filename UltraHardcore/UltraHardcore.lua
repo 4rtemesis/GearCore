@@ -1,0 +1,269 @@
+addonName = ...
+UltraHardcore = CreateFrame('Frame')
+
+-- Temporary feature flag: hide Guild Found UI until phase 2
+_G.UHC_ENABLE_GUILD_FOUND_UI = false
+
+-- DB Values
+WELCOME_MESSAGE_CLOSED = false
+GLOBAL_SETTINGS = {} -- Will be populated by LoadDBData()
+UltraHardcore:RegisterEvent('UNIT_AURA')
+UltraHardcore:RegisterEvent('UNIT_HEALTH_FREQUENT')
+UltraHardcore:RegisterEvent('PLAYER_ENTERING_WORLD')
+UltraHardcore:RegisterEvent('COMBAT_LOG_EVENT_UNFILTERED')
+UltraHardcore:RegisterEvent('ADDON_LOADED')
+UltraHardcore:RegisterEvent('QUEST_WATCH_UPDATE')
+UltraHardcore:RegisterEvent('QUEST_LOG_UPDATE')
+UltraHardcore:RegisterEvent('UI_ERROR_MESSAGE')
+UltraHardcore:RegisterEvent('PLAYER_UPDATE_RESTING')
+UltraHardcore:RegisterEvent('PLAYER_LEVEL_UP')
+UltraHardcore:RegisterEvent('GROUP_ROSTER_UPDATE')
+UltraHardcore:RegisterEvent('MIRROR_TIMER_START')
+UltraHardcore:RegisterEvent('MIRROR_TIMER_STOP')
+UltraHardcore:RegisterEvent('UNIT_SPELLCAST_START')
+UltraHardcore:RegisterEvent('UNIT_SPELLCAST_STOP')
+UltraHardcore:RegisterEvent('UNIT_SPELLCAST_SUCCEEDED')
+UltraHardcore:RegisterEvent('UNIT_SPELLCAST_INTERRUPTED')
+UltraHardcore:RegisterEvent('CHAT_MSG_SYSTEM') -- Needed for duel winner and loser
+UltraHardcore:RegisterEvent('PLAYER_LOGOUT')
+UltraHardcore:RegisterEvent('PLAYER_LOGIN')
+
+-- 🟢 Event handler to apply all funcitons on login
+UltraHardcore:SetScript('OnEvent', function(self, event, ...)
+  -- this was PLAYER_ENTERING_WORLD or ADDON_LOADED, but these are before all the UI elements are available.
+  -- Switched to PLAYER_LOGIN which happens after ADDON_LOADED and all UI elements are available
+  if event == 'PLAYER_LOGIN' then
+    UHC_LoadDBData()
+    if UHC_XPVerification and UHC_XPVerification.Init then
+      UHC_XPVerification.Init()
+    end
+    HidePlayerMapIndicators()
+    -- Show intro panel first if it's a first time character
+    -- Delay 1 second to ensure everything is loaded
+    if ShowIntroPanel then
+      C_Timer.After(1.0, function()
+        ShowIntroPanel()
+        -- Check if intro panel is showing after a brief delay
+        C_Timer.After(0.2, function()
+          if not (UHC_IsIntroPanelShowing and UHC_IsIntroPanelShowing()) then
+            UHC_ShowVersionUpdateDialog()
+          end
+        end)
+      end)
+    else
+      -- If ShowIntroPanel doesn't exist, show version dialog normally
+      UHC_ShowVersionUpdateDialog()
+    end
+    SetPlayerFrameDisplay()
+
+    if SetVitalsOverlayEnabled then
+      SetVitalsOverlayEnabled(GLOBAL_SETTINGS.showVitalsOverlay or false)
+    end
+
+    SetMinimapDisplay(GLOBAL_SETTINGS.hideMinimap or false)
+    if GLOBAL_SETTINGS.showClockEvenWhenMapHidden and GLOBAL_SETTINGS.hideMinimap then
+      ShowClock()
+    end
+
+    if SetVitalsOverlayEnabled then
+      SetVitalsOverlayEnabled(GLOBAL_SETTINGS.showVitalsOverlay or false)
+    end
+
+    if GLOBAL_SETTINGS.showTrackingWhenMapHidden and GLOBAL_SETTINGS.hideMinimap then
+      ShowTrackingButton()
+    end
+    if GLOBAL_SETTINGS.showMailEvenWhenMapHidden and GLOBAL_SETTINGS.hideMinimap then
+      ShowMail()
+    end
+
+    -- Setup target frame options
+    local targetMask = {}
+    if GLOBAL_SETTINGS.hideTargetFrame then
+      -- Hide target frame really means show our stripped down target frame instead of blizzard target frame
+      targetMask.portrait = true
+    else
+      -- show all elements (default target frame)
+      targetMask.all = true
+    end
+    targetMask.buffs = GLOBAL_SETTINGS.showTargetBuffs or false
+    targetMask.debuffs = GLOBAL_SETTINGS.showTargetDebuffs or false
+    targetMask.raidIcon = GLOBAL_SETTINGS.showTargetRaidIcon or false
+    if GLOBAL_SETTINGS.completelyRemoveTargetFrame then
+      -- An empty table will result in hiding everything
+      targetMask = {}
+    end
+    SetTargetFrameDisplay(targetMask)
+
+    SetTargetTooltipDisplay(GLOBAL_SETTINGS.hideTargetTooltip or false)
+    SetUIErrorsDisplay(GLOBAL_SETTINGS.hideUIErrors or false)
+    SetNameplateDisabled(GLOBAL_SETTINGS.disableNameplateHealth or false)
+    HidePlayerCastBar()
+    ForceFirstPersonCamera(GLOBAL_SETTINGS.setFirstPersonCamera or false)
+    -- Only update group indicators when not in combat lockdown
+    if not InCombatLockdown() then
+      SetAllGroupIndicators()
+    else
+      -- Defer group indicator updates until combat ends
+      C_Timer.After(0.1, function()
+        if not InCombatLockdown() then
+          SetAllGroupIndicators()
+        end
+      end)
+    end
+    SetRoutePlanner(GLOBAL_SETTINGS.routePlanner or false)
+    SetRoutePlannerCompass(GLOBAL_SETTINGS.routePlannerCompass or false)
+    DisablePetCombatText()
+    RepositionPetHappinessTexture()
+    if GLOBAL_SETTINGS.completelyRemovePlayerFrame or GLOBAL_SETTINGS.completelyRemoveTargetFrame then
+      if InitializeGroupButtons then
+        InitializeGroupButtons()
+      end
+    end
+    -- Initialize XP Bars at the top of the screen if enabled
+    -- Both bars can be active independently
+    if GLOBAL_SETTINGS.showExpBar then
+      -- Show custom UHC XP bar
+      InitializeExpBar()
+    else
+      -- Hide custom UHC XP bar if not enabled
+      HideExpBar()
+    end
+
+    if GLOBAL_SETTINGS.hideDefaultExpBar then
+      -- Hide default WoW XP bar when setting is enabled
+      HideDefaultExpBar()
+    else
+      -- Show default WoW XP bar by default
+      ShowDefaultExpBar()
+    end
+
+    -- Initial PvP overlay state (player may log in with PvP already active)
+    if GLOBAL_SETTINGS.showPvPOverlayWhenActive and ShowPvPOverlay and HidePvPOverlay then
+      C_Timer.After(0.5, function()
+        UltraHardcore_UpdatePvPOverlay()
+      end)
+      UltraHardcore_StartPvPOverlayTimer()
+    end
+  elseif event == 'PLAYER_ENTERING_WORLD' then
+    -- Update PvP overlay when zoning (PvP state can change in contested zones)
+    if GLOBAL_SETTINGS.showPvPOverlayWhenActive and UltraHardcore_UpdatePvPOverlay then
+      UltraHardcore_UpdatePvPOverlay()
+    end
+  elseif event == 'UNIT_HEALTH_FREQUENT' then
+    local unit = ...
+    TunnelVision(self, event, unit, GLOBAL_SETTINGS.showTunnelVision or false)
+    -- FullHealthReachedIndicator is enabled when either screen glow or audio cue is enabled
+    FullHealthReachedIndicator(
+      (GLOBAL_SETTINGS.showFullHealthIndicator or GLOBAL_SETTINGS.showFullHealthIndicatorAudioCue),
+      self,
+      event,
+      unit
+    )
+    -- Check for pet death/abandonment
+    if unit == 'pet' then
+      CheckAndAbandonPet()
+    end
+  elseif event == 'UNIT_AURA' then
+    local unit = ...
+    if unit == 'player' then
+      if GLOBAL_SETTINGS.routePlanner then
+        SetRoutePlanner(GLOBAL_SETTINGS.routePlanner)
+      end
+    end
+  elseif event == 'COMBAT_LOG_EVENT_UNFILTERED' then
+    OnCombatLogEvent(self, event)
+    HealingIndicator(GLOBAL_SETTINGS.showHealingIndicator, self, event)
+  elseif event == 'PLAYER_UPDATE_RESTING' then
+    OnPlayerUpdateRestingEvent(self)
+    SetRoutePlanner(GLOBAL_SETTINGS.routePlanner)
+  elseif event == 'PLAYER_LEVEL_UP' then
+    OnPlayerLevelUpEvent(self, event, ...)
+    AnnounceLevelUpToGuild(GLOBAL_SETTINGS.announceLevelUpToGuild)
+  elseif event == 'GROUP_ROSTER_UPDATE' then
+    SetPartyFramesInfo(GLOBAL_SETTINGS.hideGroupHealth or false)
+    -- Only update group indicators when not in combat lockdown
+    if not InCombatLockdown() then
+      SetAllGroupIndicators()
+    else
+      -- Defer group indicator updates until combat ends
+      C_Timer.After(0.1, function()
+        if not InCombatLockdown() then
+          SetAllGroupIndicators()
+        end
+      end)
+    end
+  elseif event == 'UNIT_SPELLCAST_START' then
+    -- Hide player cast bar if setting is enabled
+    local unit = ...
+    if unit == 'player' then
+      HidePlayerCastBar()
+    end
+
+    -- Check for Hearthstone casting start
+    local unit, castGUID, spellID = ...
+    if GLOBAL_SETTINGS.roachHearthstoneInPartyCombat then
+      if unit == 'player' and spellID == 8690 then -- 8690 is Hearthstone spell ID
+        local affectingCombat = UnitAffectingCombat('player')
+        local partyInCombat = false
+
+        --print("Player combat status: " .. tostring(affectingCombat))
+        -- party1 is always the player
+        for i = 1, 5 do
+          local partyUnit = 'party' .. i
+          --print("Party member " .. i .. " combat status: " .. tostring(UnitAffectingCombat(partyUnit)))
+          if UnitAffectingCombat(partyUnit) then
+            partyInCombat = true
+            break
+          end
+        end
+
+        if affectingCombat or partyInCombat then
+          ShowHearthingOverlay()
+        end
+      end
+    end
+  elseif event == 'UNIT_SPELLCAST_STOP' or event == 'UNIT_SPELLCAST_SUCCEEDED' or event == 'UNIT_SPELLCAST_FAILED' or event == 'UNIT_SPELLCAST_INTERRUPTED' then
+    if GLOBAL_SETTINGS.roachHearthstoneInPartyCombat then
+      -- Check for Hearthstone casting end
+      local unit, castGUID, spellID = ...
+      if unit == 'player' and spellID == 8690 then -- 8690 is Hearthstone spell ID
+        HideHearthingOverlay()
+      end
+    end
+  elseif event == 'CHAT_MSG_SYSTEM' then
+    DuelTracker(...)
+  elseif event == 'PLAYER_LOGOUT' then
+    -- Cleanup: ensure any hidden map indicators are restored when logging out/reloading
+    if RestorePlayerMapIndicators then
+      RestorePlayerMapIndicators()
+    end
+  end
+end)
+
+-- Mirror Blizzard's RotateMinimap CVar into ULTRA's rotateMinimapOnResourceMap
+-- setting whenever the player changes it in the default WoW options. This keeps
+-- the ULTRA checkbox in sync with the game's own option, without writing back
+-- to the CVar when the ULTRA setting changes (ULTRA only affects behaviour
+-- when Always Show Resource Map is active).
+local rotateMinimapWatcher = CreateFrame('Frame')
+rotateMinimapWatcher:RegisterEvent('CVAR_UPDATE')
+rotateMinimapWatcher:SetScript('OnEvent', function(_, name, value)
+  -- CVAR_UPDATE fires with the CVar name exactly as used in GetCVar/SetCVar.
+  if name ~= 'RotateMinimap' then return end
+
+  local isEnabled = (value == '1' or value == 'true' or value == true)
+
+  -- Update saved per-character setting so future sessions mirror Blizzard.
+  if GLOBAL_SETTINGS then
+    GLOBAL_SETTINGS.rotateMinimapOnResourceMap = isEnabled
+  end
+
+  -- If the Settings UI is currently open, update its temp copy and refresh
+  -- checkboxes so the ULTRA interface reflects the change "live".
+  if _G.tempSettings then
+    _G.tempSettings.rotateMinimapOnResourceMap = isEnabled
+  end
+  if _G.updateCheckboxes then
+    _G.updateCheckboxes()
+  end
+end)

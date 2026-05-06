@@ -90,6 +90,7 @@ local function RefreshCombatLockState(frame)
         frame.cbSelfFound,
         frame.cbWeapon,
         frame.cbRepair,
+        frame.cbMinimap,
         frame.cbBroadcast,
         frame.cbShowPopup,
         frame.cbShowWarning,
@@ -258,9 +259,18 @@ local function BuildOptionsFrame()
     excNote:SetTextColor(0.7, 0.7, 0.7)
     excNote:SetText("Applies to all difficulty modes.")
 
+    local uiHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    uiHeader:SetPoint("TOPLEFT", excNote, "BOTTOMLEFT", -30, -22)
+    uiHeader:SetText("Interface")
+
+    local cbMinimap = MakeCheckbox(f,
+        "Show Minimap Button",
+        "Show or hide the Rustcore minimap button.",
+        uiHeader, -8, "showMinimapButton")
+
     -- ── Death broadcast section ───────────────────────────────────────────────
     local bcHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    bcHeader:SetPoint("TOPLEFT", excNote, "BOTTOMLEFT", -30, -22)
+    bcHeader:SetPoint("TOPLEFT", cbMinimap, "BOTTOMLEFT", 0, -18)
     bcHeader:SetText("Death Broadcast")
 
     local cbBroadcast = MakeCheckbox(f,
@@ -296,6 +306,7 @@ local function BuildOptionsFrame()
     f.cbSelfFound   = cbSelfFound
     f.cbWeapon      = cbWeapon
     f.cbRepair      = cbRepair
+    f.cbMinimap     = cbMinimap
     f.cbBroadcast   = cbBroadcast
     f.cbShowPopup   = cbShowPopup
     f.cbShowWarning = cbShowWarning
@@ -308,6 +319,7 @@ local function BuildOptionsFrame()
         self.cbSelfFound:Refresh()
         self.cbWeapon:Refresh()
         self.cbRepair:Refresh()
+        self.cbMinimap:Refresh()
         self.cbBroadcast:Refresh()
         self.cbShowPopup:Refresh()
         self.cbShowWarning:Refresh()

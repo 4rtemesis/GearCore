@@ -21,6 +21,7 @@ local defaults = {
     selfFound       = false, -- block mailbox / AH / trade
     allowRepair     = false, -- if false (default), repair is blocked
     keepMainWeapon  = false, -- spare main weapon slot from deletion
+    showMinimapButton = true, -- show the minimap launcher button
     broadcastDeaths = true,  -- broadcast death to Rustcore channel
     showDeathPopup  = true,  -- show popup notification for other players' deaths
     showDeathWarning= false, -- show center-screen warning for other players' deaths
@@ -37,6 +38,7 @@ local markedItems     = {}   -- items selected for deletion after death
 local isDead          = false
 local lastDeathSource = nil  -- last attacker/environment that hit the player
 local minimapButton
+local UpdateMinimapButtonPosition
 local minimapShapes = {
     ["ROUND"] = {true, true, true, true},
     ["SQUARE"] = {false, false, false, false},
@@ -60,6 +62,16 @@ local function GetMinimapAngleFromCursor()
     local cx, cy = GetCursorPosition()
     cx, cy = cx / scale, cy / scale
     return math.deg(math.atan2(cy - my, cx - mx)) % 360
+end
+
+local function ApplyMinimapButtonVisibility()
+    if not minimapButton then return end
+    if Rustcore.GetSetting("showMinimapButton") then
+        minimapButton:Show()
+        UpdateMinimapButtonPosition()
+    else
+        minimapButton:Hide()
+    end
 end
 
 -- ── Settings ──────────────────────────────────────────────────────────────────
@@ -90,6 +102,9 @@ function Rustcore.SetSetting(key, value)
         return false
     end
     RustcoreDB[key] = value
+    if key == "showMinimapButton" then
+        ApplyMinimapButtonVisibility()
+    end
     return true
 end
 
@@ -262,7 +277,7 @@ end
 
 -- ── Event handling ────────────────────────────────────────────────────────────
 
-local function UpdateMinimapButtonPosition()
+UpdateMinimapButtonPosition = function()
     if not minimapButton then return end
     local angle = math.rad(RustcoreDB.minimapAngle or 220)
     local x, y = math.cos(angle), math.sin(angle)
@@ -310,6 +325,7 @@ local function CreateMinimapButton()
     icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 7, -6)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
+    btn.iconBaseSize = 17
 
     if btn.CreateMaskTexture and icon.AddMaskTexture then
         local mask = btn:CreateMaskTexture()
@@ -331,6 +347,31 @@ local function CreateMinimapButton()
     highlight:SetSize(53, 53)
     highlight:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
 
+    local clickAnim = icon:CreateAnimationGroup()
+    local shrink = clickAnim:CreateAnimation("Scale")
+    shrink:SetOrder(1)
+    shrink:SetDuration(0.06)
+    shrink:SetScale(0.88, 0.88)
+    shrink:SetOrigin("CENTER", 0, 0)
+
+    local grow = clickAnim:CreateAnimation("Scale")
+    grow:SetOrder(2)
+    grow:SetDuration(0.08)
+    grow:SetScale(1.1363636, 1.1363636)
+    grow:SetOrigin("CENTER", 0, 0)
+
+    clickAnim:SetScript("OnPlay", function()
+        if btn.icon then
+            btn.icon:SetSize(btn.iconBaseSize, btn.iconBaseSize)
+        end
+    end)
+    clickAnim:SetScript("OnFinished", function()
+        if btn.icon then
+            btn.icon:SetSize(btn.iconBaseSize, btn.iconBaseSize)
+        end
+    end)
+    btn.clickAnim = clickAnim
+
     btn:SetScript("OnEnter", function(self)
         if self:GetHighlightTexture() then
             self:GetHighlightTexture():Show()
@@ -348,6 +389,10 @@ local function CreateMinimapButton()
         GameTooltip:Hide()
     end)
     btn:SetScript("OnClick", function(_, button)
+        if btn.clickAnim then
+            btn.clickAnim:Stop()
+            btn.clickAnim:Play()
+        end
         if button == "RightButton" then
             RustcoreUI.ReopenDeletionFrame()
         else
@@ -371,7 +416,7 @@ local function CreateMinimapButton()
     end)
 
     minimapButton = btn
-    UpdateMinimapButtonPosition()
+    ApplyMinimapButtonVisibility()
 end
 
 local eventFrame = CreateFrame("Frame")

@@ -1,0 +1,12 @@
+## Interface: 11508
+## Title: Rustcore Era
+## Notes: Hardcore gear loss on death for WoW Classic Era
+## Author: Rustcore
+## Version: 1.0
+## IconTexture: Interface\AddOns\RustcoreEra\RCicon.png
+## SavedVariables: RustcoreDB
+
+Rustcore.lua
+RustcoreBroadcast.lua
+RustcoreOptions.lua
+RustcoreUI.lua

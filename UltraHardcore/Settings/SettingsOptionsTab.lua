@@ -1,0 +1,2573 @@
+local settingsCheckboxOptions = { {
+  -- Lite Preset Settings
+  name = 'ULTRA Player Frame',
+  dbSettingsValueName = 'hidePlayerFrame',
+  tooltip = 'Minimalistic player frame to hide own health',
+}, {
+  name = 'Tunnel Vision',
+  dbSettingsValueName = 'showTunnelVision',
+  tooltip = 'The screen gets darker as you get closer to death',
+}, {
+  -- Recommended Preset Settings
+  name = 'ULTRA Target Frame',
+  dbSettingsValueName = 'hideTargetFrame',
+  tooltip = "Show ULTRA target frame, so you can't see the target's health or level",
+}, {
+  name = 'Hide Target Tooltips',
+  dbSettingsValueName = 'hideTargetTooltip',
+  tooltip = "Target tooltips are not visible, so you can't see the target's health or level",
+}, {
+  name = 'Disable Nameplates',
+  dbSettingsValueName = 'disableNameplateHealth',
+  tooltip = 'Turns off nameplates, hiding healthbars above units',
+}, {
+  name = 'Show Dazed effect',
+  dbSettingsValueName = 'showDazedEffect',
+  tooltip = 'A blue blur effect appears around your character when dazed',
+}, {
+  name = 'ULTRA Party Frames',
+  dbSettingsValueName = 'hideGroupHealth',
+  tooltip = 'Party healthbars are hidden and replaced with a custom health indicator',
+}, {
+  -- Extreme Preset Settings
+  name = 'Hide Minimap',
+  dbSettingsValueName = 'hideMinimap',
+  tooltip = 'Hides the minimap. See Maps section for additional resource tracking options',
+}, {
+  name = 'Pets Die Permanently',
+  dbSettingsValueName = 'petsDiePermanently',
+  tooltip = "Pets can't be resurrected when they are killed",
+}, {
+  name = 'Hide Action Bars when not resting',
+  dbSettingsValueName = 'hideActionBars',
+  tooltip = 'Hide action bars when not resting or near a campfire',
+}, {
+  name = 'Tunnel Vision Covers Everything',
+  dbSettingsValueName = 'tunnelVisionMaxStrata',
+  tooltip = 'Tunnel Vision covers all UI elements',
+  dependsOn = 'showTunnelVision',
+}, {
+  name = 'Route Planner',
+  dbSettingsValueName = 'routePlanner',
+  tooltip = 'The map is only usable near campfire or when resting. Your location marker on the map is also hidden.',
+}, {
+  -- Experimental Preset Settings
+  name = 'ULTRA Incoming Crit Effect',
+  dbSettingsValueName = 'showCritScreenMoveEffect',
+  tooltip = 'A red screen rotation effect appears when you take a critical hit',
+}, {
+  name = 'Hide Custom Resource Bar',
+  dbSettingsValueName = 'hideCustomResourceBar',
+  tooltip = 'Hide the custom resource bar',
+}, {
+  name = 'ULTRA Full Health Indicator (Screen Glow)',
+  dbSettingsValueName = 'showFullHealthIndicator',
+  tooltip = 'The edges of the screen glow when you are at full health',
+}, {
+  name = 'ULTRA Full Health Indicator (Audio Cue)',
+  dbSettingsValueName = 'showFullHealthIndicatorAudioCue',
+  tooltip = 'A sound / audio cue plays when you are at full health',
+}, {
+  name = 'ULTRA Incoming Healing Effect',
+  dbSettingsValueName = 'showHealingIndicator',
+  tooltip = 'Gold glow on the edges of the screen when you are healed',
+}, {
+  name = 'Hide Player Cast Bar',
+  dbSettingsValueName = 'hidePlayerCastBar',
+  tooltip = 'Hide the player casting bar to remove spell casting information',
+}, {
+  name = 'First Person Camera',
+  dbSettingsValueName = 'setFirstPersonCamera',
+  tooltip = 'Play in first person mode, allows to look around for briew records of time',
+}, {
+  name = 'Completely Remove Player Frame',
+  dbSettingsValueName = 'completelyRemovePlayerFrame',
+  tooltip = 'Completely remove the player frame',
+}, {
+  name = 'Completely Remove Target Frame',
+  dbSettingsValueName = 'completelyRemoveTargetFrame',
+  tooltip = 'Completely remove the target frame',
+  dependsOn = 'hideTargetFrame',
+}, {
+  name = 'Show Target Buffs',
+  dbSettingsValueName = 'showTargetBuffs',
+  tooltip = 'Show buffs on the target frame',
+  dependsOn = 'hideTargetFrame',
+}, {
+  name = 'Show Target Debuffs',
+  dbSettingsValueName = 'showTargetDebuffs',
+  tooltip = 'Show debuffs on the target frame',
+  dependsOn = 'hideTargetFrame',
+}, {
+  name = 'Show Target Raid Icon',
+  dbSettingsValueName = 'showTargetRaidIcon',
+  tooltip = 'Show raid icon on the target frame',
+  dependsOn = 'hideTargetFrame',
+}, {
+  name = 'Use Custom Combo Frame',
+  dbSettingsValueName = 'useCustomComboFrame',
+  tooltip = 'Use a custom combo frame instead of the default Blizzard combo frame',
+}, {
+  name = 'Hide Combo Frame on Target Frame',
+  dbSettingsValueName = 'hideComboFrame',
+  tooltip = 'Hide the default Blizzard combo point frame',
+}, {
+  name = 'Show Vitals Overlay',
+  dbSettingsValueName = 'showVitalsOverlay',
+  tooltip = 'Show maximum health and mana on the character panel',
+}, {
+  name = 'Announce Level Up to Guild',
+  dbSettingsValueName = 'announceLevelUpToGuild',
+  tooltip = 'Announces level ups to guild chat every 10th level',
+}, {
+  name = 'Announce Death Details to Guild',
+  dbSettingsValueName = 'announceDeathDetailsToGuild',
+  tooltip = 'Announces death details to guild chat when you die',
+}, {
+  name = 'Auto Join ULTRA Channel',
+  dbSettingsValueName = 'autoJoinUHCChannel',
+  tooltip = 'Automatically join the ULTRA chat channel on login',
+}, {
+  name = 'Hide UI Error Messages',
+  dbSettingsValueName = 'hideUIErrors',
+  tooltip = 'Hide error messages that appear on screen (like "Target is too far away")',
+}, {
+  name = 'Show Clock When Minimap is Hidden',
+  dbSettingsValueName = 'showClockEvenWhenMapHidden',
+  tooltip = 'If Hide Minimap is enabled, keep the clock on display instead of hiding it',
+  dependsOn = 'hideMinimap',
+}, {
+  name = 'Show Mail Indicator When Minimap is Hidden',
+  dbSettingsValueName = 'showMailEvenWhenMapHidden',
+  tooltip = 'If Hide Minimap is enabled, keep the mail indicator on display instead of hiding it',
+  dependsOn = 'hideMinimap',
+}, {
+  name = 'Announce Party Deaths on Group Join',
+  dbSettingsValueName = 'announcePartyDeathsOnGroupJoin',
+  tooltip = 'Automatically announce party death statistics when joining a group',
+}, {
+  name = 'Announce Dungeons Completed on Group Join',
+  dbSettingsValueName = 'announceDungeonsCompletedOnGroupJoin',
+  tooltip = 'Automatically announce dungeons completed statistics when joining a group',
+}, {
+  name = 'Buff Bar on Resource Bar',
+  dbSettingsValueName = 'buffBarOnResourceBar',
+  tooltip = 'Position player buff bar on top of the custom resource bar',
+  dependsOff = 'hideCustomResourceBar',
+}, {
+  name = 'Hide Buffs & Debuffs',
+  dbSettingsValueName = 'hideBuffsCompletely',
+  tooltip = 'Hides buffs and debuffs completely',
+}, {
+  name = 'Hide Debuffs',
+  dbSettingsValueName = 'hideDebuffs',
+  tooltip = 'Hides debuff icons only',
+}, {
+  name = 'Highest Crit Appreciation Soundbite',
+  dbSettingsValueName = 'newHighCritAppreciationSoundbite',
+  tooltip = 'Play a soundbite when you achieve a new highest crit value',
+}, {
+  name = 'Party Death Soundbite',
+  dbSettingsValueName = 'playPartyDeathSoundbite',
+  tooltip = 'Play a soundbite when a party member dies',
+}, {
+  name = 'Player Death Soundbite',
+  dbSettingsValueName = 'playPlayerDeathSoundbite',
+  tooltip = 'Play a soundbite when you die',
+}, {
+  name = 'Seasonal-themed Tunnel Vision',
+  dbSettingsValueName = 'spookyTunnelVision',
+  tooltip = 'Use the latest holiday themed tunnel vision overlay',
+  dependsOn = 'showTunnelVision',
+}, {
+  name = 'Roach Hearthstone In Party Combat',
+  dbSettingsValueName = 'roachHearthstoneInPartyCombat',
+  tooltip = 'Show a roach overlay on screen when using hearthstone whilst a party member is in combat',
+}, {
+  name = 'PvP Active Warning Overlay',
+  dbSettingsValueName = 'showPvPOverlayWhenActive',
+  tooltip = 'Show an overlay warning on screen when PvP is active on your character',
+}, {
+  name = 'Show XP Bar',
+  dbSettingsValueName = 'showExpBar',
+  tooltip = 'Shows experience percentage and current XP/max XP in a bar at the top of the screen',
+}, {
+  name = 'Show XP Bar Tooltip',
+  dbSettingsValueName = 'showXpBarToolTip',
+  tooltip = 'Shows detailed XP information when hovering over the XP bar (percentage and exact numbers)',
+  dependsOn = 'showExpBar',
+}, {
+  name = 'Hide Default WoW XP Bar',
+  dbSettingsValueName = 'hideDefaultExpBar',
+  tooltip = 'Hide the original World of Warcraft experience bar',
+}, {
+  name = 'Route Planner - Compass',
+  dbSettingsValueName = 'routePlannerCompass',
+  tooltip = 'Get a compass to aid you in your journey',
+}, {
+  name = 'ULTRA Show Druid Manabar',
+  dbSettingsValueName = 'showDruidFormResourceBar',
+  tooltip = 'Show a separate resource bar when shapeshifted as a druid',
+}, {
+  name = 'Show Soulshard Indicator',
+  dbSettingsValueName = 'showSoulshardIndicator',
+  tooltip = 'Display an icon when the current target will drop a soulshard upon defeat (Warlocks only)',
+}, {
+  name = 'Always Show Resource Map',
+  dbSettingsValueName = 'alwaysShowResourceMap',
+  tooltip = 'Keep the transparent resource map visible in the normal minimap location (shows resource blips only)',
+  dependsOn = 'hideMinimap',
+}, {
+  name = 'Show Player Arrow on Resource Map',
+  dbSettingsValueName = 'showPlayerArrowOnResourceMap',
+  tooltip = 'Display the player arrow on the resource tracking map',
+  dependsOn = 'alwaysShowResourceMap',
+}, {
+  name = 'Rotate Minimap',
+  dbSettingsValueName = 'rotateMinimapOnResourceMap',
+  tooltip = 'Rotate the minimap instead of keeping it static',
+}, {
+  name = 'Show Tracking Button When Minimap is Hidden',
+  dbSettingsValueName = 'showTrackingWhenMapHidden',
+  tooltip = 'If Always On Resource Map is enabled, keep the tracking button on display instead of hiding it',
+  dependsOn = 'hideMinimap',
+} }
+
+-- XP Bar Settings
+local settingsSliderOptions = { {
+  name = 'XP Bar Height',
+  dbSettingsValueName = 'xpBarHeight',
+  tooltip = 'Adjust the height of the XP bar at the top of the screen (1-10 pixels)',
+  minValue = MINIMUM_XP_BAR_HEIGHT,
+  maxValue = MAXIMUM_XP_BAR_HEIGHT,
+  defaultValue = 3,
+} }
+
+-- Temporary per-session settings used by the options UI; only written back
+-- into GLOBAL_SETTINGS when the player clicks Save and Reload.
+tempSettings = tempSettings or {}
+
+local presets = { {
+  -- Preset 1: Lite
+  -- Lite Preset Settings
+  hidePlayerFrame = true,
+  showTunnelVision = true,
+  -- Recommended Preset Settings
+  hideMinimap = false,
+  hideTargetFrame = false,
+  hideTargetTooltip = false,
+  disableNameplateHealth = false,
+  showDazedEffect = false,
+  hideGroupHealth = false,
+  -- Extreme Preset Settings
+  petsDiePermanently = false,
+  hideActionBars = false,
+  tunnelVisionMaxStrata = false,
+}, {
+  -- Preset 2: Recommended
+  -- Lite Preset Settings
+  hidePlayerFrame = true,
+  showTunnelVision = true,
+  -- Recommended Preset Settings
+  hideMinimap = false,
+  hideTargetFrame = true,
+  hideTargetTooltip = true,
+  disableNameplateHealth = true,
+  showDazedEffect = true,
+  hideGroupHealth = true,
+  -- Extreme Preset Settings
+  petsDiePermanently = false,
+  hideActionBars = false,
+  tunnelVisionMaxStrata = false,
+  routePlanner = false,
+}, {
+  -- Preset 3: Extreme
+  -- Lite Preset Settings
+  hidePlayerFrame = true,
+  showTunnelVision = true,
+  -- Recommended Preset Settings
+  hideMinimap = true,
+  hideTargetFrame = true,
+  hideTargetTooltip = true,
+  disableNameplateHealth = true,
+  showDazedEffect = true,
+  hideGroupHealth = true,
+  -- Extreme Preset Settings
+  petsDiePermanently = true,
+  hideActionBars = true,
+  tunnelVisionMaxStrata = true,
+  routePlanner = true,
+} }
+
+-- UI Layout Constants
+-- Centralized layout definitions to avoid hardcoded magic numbers and ensure consistency
+-- PAGE_WIDTH controls the width of ALL sections (Presets + UI Settings)
+local LAYOUT = {
+  PAGE_WIDTH = 520, -- Width of the main container sections
+  ROW_WIDTH = 480, -- Width of inner content rows (sliders, color rows)
+  SEARCH_WIDTH = 400, -- Width of the search box
+  HEADER_HEIGHT = 22, -- Height of section headers
+  ROW_HEIGHT = 30, -- Standard height for checkbox/slider rows
+  COLOR_ROW_HEIGHT = 24, -- Height for color picker rows
+  SECTION_GAP = 10, -- Gap between vertical sections
+  HEADER_CONTENT_GAP = 10, -- Gap between a header and its first child
+  LABEL_WIDTH = 140, -- Width of standard left-side labels
+  SLIDER_WIDTH = 150, -- Width of standard sliders
+}
+
+-- Search Logic Helper
+-- Performs a substring match.
+-- NOTE: `searchBlob` should be pre-computed and lower-cased for performance.
+--       `query` is expected to be lower-cased by the caller.
+local function IsSearchMatch(searchBlob, query)
+  -- If no query, everything matches
+  if not query or query == '' then
+    return true
+  end
+  -- If no search text on item, it can't match a specific query
+  if not searchBlob then
+    return false
+  end
+  -- Simple substring match (assumes caller provides lower-case query if needed)
+  return string.find(searchBlob, query, 1, true) ~= nil
+end
+
+-- Global function to update radio buttons (needed by Statistics tab)
+function updateRadioButtons()
+  for settingName, radio in pairs(radioButtons) do
+    if radio then
+      local isChecked = tempSettings[settingName] or false
+      radio:SetChecked(isChecked)
+      GLOBAL_SETTINGS[settingName] = tempSettings[settingName]
+    end
+  end
+end
+
+-- Initialize Settings Options Tab when called
+function InitializeSettingsOptionsTab(tabContents)
+  -- Check if tabContents[2] exists
+  if not tabContents or not tabContents[2] then return end
+
+  -- Check if already initialized to prevent duplicates
+  if tabContents[2].initialized then return end
+
+  -- Mark as initialized
+  tabContents[2].initialized = true
+
+  -- Ensure collapsed state storage exists
+  if not GLOBAL_SETTINGS.collapsedSettingsSections then
+    GLOBAL_SETTINGS.collapsedSettingsSections = {}
+  end
+  if GLOBAL_SETTINGS.collapsedSettingsSections.presetSection == nil then
+    GLOBAL_SETTINGS.collapsedSettingsSections.presetSection = {}
+  end
+
+  if tempSettings.lockResourceBar == nil then
+    if GLOBAL_SETTINGS and GLOBAL_SETTINGS.lockResourceBar ~= nil then
+      tempSettings.lockResourceBar = GLOBAL_SETTINGS.lockResourceBar
+    else
+      tempSettings.lockResourceBar = false
+    end
+  end
+
+  -- Initialize Rotate Minimap for Resource Map to mirror the player's current
+  -- WoW minimap rotation preference the first time, so we don't hard-force
+  -- this option on or off by default. Subsequent changes are only saved when
+  -- the player clicks Save and Reload.
+  if tempSettings.rotateMinimapOnResourceMap == nil then
+    if GLOBAL_SETTINGS and GLOBAL_SETTINGS.rotateMinimapOnResourceMap ~= nil then
+      tempSettings.rotateMinimapOnResourceMap = GLOBAL_SETTINGS.rotateMinimapOnResourceMap
+    else
+      local cvarValue = GetCVar('RotateMinimap')
+      tempSettings.rotateMinimapOnResourceMap =
+        (cvarValue == '1' or cvarValue == 'true' or cvarValue == true)
+    end
+  end
+
+  local presetButtonsFrame = CreateFrame('Frame', nil, tabContents[2])
+  presetButtonsFrame:SetSize(LAYOUT.PAGE_WIDTH, 150) -- Increased width to match new layout
+  presetButtonsFrame:SetPoint('TOP', tabContents[2], 'TOP', 0, -10)
+
+  local checkboxes = {}
+  local sliders = {}
+  local presetButtons = {}
+  local selectedPreset = nil
+
+  local function cascadeDependencyUpdates(settingName)
+    if not settingName then return end
+
+    for _, otherCheckboxItem in ipairs(settingsCheckboxOptions) do
+      if otherCheckboxItem.dependsOn == settingName or otherCheckboxItem.dependsOff == settingName then
+        local otherCheckbox = checkboxes[otherCheckboxItem.dbSettingsValueName]
+        if otherCheckbox and otherCheckbox._updateDependency then
+          otherCheckbox._updateDependency()
+        end
+      end
+    end
+  end
+
+  local function updateCheckboxes()
+    for _, checkboxItem in ipairs(settingsCheckboxOptions) do
+      local checkbox = checkboxes[checkboxItem.dbSettingsValueName]
+      if checkbox then
+        -- Provide proper defaults for checkboxes if they're nil
+        local isChecked = tempSettings[checkboxItem.dbSettingsValueName]
+        if isChecked == nil then
+          -- Default showExpBar to false (user must explicitly enable it)
+          isChecked = false
+        end
+        checkbox:SetChecked(isChecked)
+        -- Update dependency state
+        if checkbox._updateDependency then
+          checkbox._updateDependency()
+        end
+      end
+    end
+    if _G.updateSectionCounts then
+      _G.updateSectionCounts()
+    end
+  end
+
+  local function updateSliders()
+    for _, sliderItem in ipairs(settingsSliderOptions) do
+      local slider = sliders[sliderItem.dbSettingsValueName]
+      if slider then
+        local value = tempSettings[sliderItem.dbSettingsValueName]
+        if value == nil then
+          value = sliderItem.defaultValue
+        end
+        slider:SetValue(value)
+      end
+    end
+  end
+
+  local function applyPreset(presetIndex)
+    if not presets[presetIndex] then return end
+
+    for key, value in pairs(presets[presetIndex]) do
+      tempSettings[key] = value
+    end
+
+    -- Save selected difficulty
+    local difficultyNames = { 'lite', 'recommended', 'extreme' }
+    tempSettings.selectedDifficulty = difficultyNames[presetIndex]
+    GLOBAL_SETTINGS.selectedDifficulty = difficultyNames[presetIndex]
+
+    -- Apply the new completely remove settings immediately when presets are applied
+    SetPlayerFrameDisplay()
+
+    updateCheckboxes()
+    updateSliders()
+    updateRadioButtons()
+
+    if selectedPreset then
+      selectedPreset:SetBackdropBorderColor(0.5, 0.5, 0.5)
+    end
+    selectedPreset = presetButtons[presetIndex]
+    selectedPreset:SetBackdropBorderColor(1, 1, 0)
+  end
+
+  local resourceIndicatorShown = UltraHardcoreDB and UltraHardcoreDB.resourceIndicatorShown
+  local presetIcons =
+    {
+      'Interface\\AddOns\\UltraHardcore\\textures\\' .. (resourceIndicatorShown and '01_bonnie_light.png' or 'skull1_100.png'),
+      'Interface\\AddOns\\UltraHardcore\\textures\\' .. (resourceIndicatorShown and '02_bonnie_recommended.png' or 'skull2_100.png'),
+      'Interface\\AddOns\\UltraHardcore\\textures\\' .. (resourceIndicatorShown and '03_bonnie_extreme.png' or 'skull3_100.png'),
+    }
+
+  local buttonSize = 100
+  local spacing = 10
+  local textYOffset = -5
+
+  for i = 1, 3 do
+    local button = CreateFrame('Button', nil, presetButtonsFrame, 'BackdropTemplate')
+    button:SetSize(buttonSize, buttonSize)
+
+    if i == 1 then
+      button:SetPoint('LEFT', presetButtonsFrame, 'LEFT', spacing, -20)
+    elseif i == 2 then
+      button:SetPoint('CENTER', presetButtonsFrame, 'CENTER', 0, -20)
+    elseif i == 3 then
+      button:SetPoint('RIGHT', presetButtonsFrame, 'RIGHT', -spacing, -20)
+    end
+
+    button:SetBackdrop({
+      edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border',
+      edgeSize = 10,
+    })
+    button:SetBackdropBorderColor(0.5, 0.5, 0.5)
+
+    local icon = button:CreateTexture(nil, 'ARTWORK')
+    icon:SetAllPoints()
+    icon:SetTexture(presetIcons[i])
+
+    local presetText = button:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+    presetText:SetPoint('TOP', button, 'BOTTOM', 0, textYOffset)
+    if i == 1 then
+      presetText:SetText('Lite')
+    elseif i == 2 then
+      presetText:SetText('Recommended')
+    elseif i == 3 then
+      presetText:SetText('Extreme')
+    end
+    presetText:SetTextColor(0.922, 0.871, 0.761)
+
+    button:SetScript('OnClick', function()
+      applyPreset(i)
+    end)
+
+    presetButtons[i] = button
+  end
+
+  -- Initialize preset selection display based on current selectedDifficulty
+  local function updatePresetSelectionDisplay()
+    local currentDifficulty = GLOBAL_SETTINGS.selectedDifficulty
+
+    -- Reset all buttons to default appearance
+    for i = 1, 3 do
+      presetButtons[i]:SetBackdropBorderColor(0.5, 0.5, 0.5)
+    end
+
+    -- Highlight the currently selected preset
+    if currentDifficulty then
+      local presetIndex = nil
+      if currentDifficulty == 'lite' then
+        presetIndex = 1
+      elseif currentDifficulty == 'recommended' then
+        presetIndex = 2
+      elseif currentDifficulty == 'extreme' then
+        presetIndex = 3
+      end
+
+      if presetIndex and presetButtons[presetIndex] then
+        presetButtons[presetIndex]:SetBackdropBorderColor(1, 1, 0) -- Yellow border
+        selectedPreset = presetButtons[presetIndex]
+      end
+    end
+  end
+
+  -- Call the function to initialize display
+  updatePresetSelectionDisplay()
+
+  -- Search bar (filters options below)
+  local searchBox = CreateFrame('EditBox', nil, tabContents[2], 'InputBoxTemplate')
+  searchBox:SetSize(LAYOUT.SEARCH_WIDTH, 24) -- Reduced width to fit Collapse button
+  searchBox:SetAutoFocus(false)
+  searchBox:SetPoint('TOPLEFT', tabContents[2], 'TOPLEFT', 25, -180)
+
+  local searchPlaceholder = searchBox:CreateFontString(nil, 'OVERLAY', 'GameFontDisableSmall')
+  searchPlaceholder:SetPoint('LEFT', searchBox, 'LEFT', 6, 0)
+  searchPlaceholder:SetText('Search options...')
+
+  local clearSearchButton = CreateFrame('Button', nil, tabContents[2], 'UIPanelButtonTemplate')
+  clearSearchButton:SetSize(56, 22)
+  clearSearchButton:SetPoint('LEFT', searchBox, 'RIGHT', 6, 0)
+  clearSearchButton:SetText('Clear')
+
+  local collapseAllButton = CreateFrame('Button', nil, tabContents[2], 'UIPanelButtonTemplate')
+  collapseAllButton:SetSize(96, 22)
+  collapseAllButton:SetPoint('LEFT', clearSearchButton, 'RIGHT', 6, 0)
+  collapseAllButton:SetText('Collapse All')
+
+  -- Iterate through all collapsible sections (Presets + UI Settings) and force them closed
+  collapseAllButton:SetScript('OnClick', function()
+    local framesBySection = _G.__UHC_SectionFrames
+    local collapsedBySection = _G.__UHC_SectionCollapsed
+    local headerIcons = _G.__UHC_SectionHeaderIcons
+    local collapsedHeights = _G.__UHC_SectionCollapsedHeights
+    local childrenBySection = _G.__UHC_SectionChildren
+
+    if framesBySection and collapsedBySection then
+      for idx, frame in ipairs(framesBySection) do
+        collapsedBySection[idx] = true
+        if headerIcons and headerIcons[idx] then
+          headerIcons[idx]:SetTexture('Interface\\Buttons\\UI-PlusButton-Up')
+        end
+        if collapsedHeights and collapsedHeights[idx] then
+          frame:SetHeight(collapsedHeights[idx])
+        end
+        if childrenBySection and childrenBySection[idx] then
+          for _, child in ipairs(childrenBySection[idx]) do
+            child:SetShown(false)
+          end
+        end
+
+        -- Update persistent storage if tracking exists
+        if GLOBAL_SETTINGS.collapsedSettingsSections and GLOBAL_SETTINGS.collapsedSettingsSections.presetSection then
+          local title = _G.__UHC_SectionTitles and _G.__UHC_SectionTitles[idx]
+          if title then
+            GLOBAL_SETTINGS.collapsedSettingsSections.presetSection[title] = true
+          end
+        end
+      end
+    end
+
+    -- Also collapse the UI Settings section if it exists
+    if _G.__UHC_ToggleUISettingsCollapse then
+      _G.__UHC_ToggleUISettingsCollapse(true)
+    end
+
+    if _G.__UHC_RecalcContentHeight then
+      _G.__UHC_RecalcContentHeight()
+    end
+  end)
+
+  -- Global filter function (uses globals set after checkbox creation)
+  _G.UHC_ApplySettingsSearchFilter = function(query)
+    local q = (query or '')
+    _G.__UHC_CurrentSearchQuery = q
+    local ql = string.lower(q)
+
+    local childrenBySection = _G.__UHC_SectionChildren
+    local framesBySection = _G.__UHC_SectionFrames
+    local collapsedBySection = _G.__UHC_SectionCollapsed
+    local HEADER_HEIGHT = _G.__UHC_SECTION_HEADER_HEIGHT or LAYOUT.HEADER_HEIGHT
+    local ROW_HEIGHT = _G.__UHC_ROW_HEIGHT or LAYOUT.ROW_HEIGHT
+    local HEADER_CONTENT_GAP = _G.__UHC_HEADER_CONTENT_GAP or LAYOUT.HEADER_CONTENT_GAP
+
+    if not childrenBySection or not framesBySection or not collapsedBySection then return end
+
+    for idx, children in ipairs(childrenBySection) do
+      local sf = framesBySection[idx]
+      local isCollapsed = collapsedBySection[idx]
+      local visibleCount = 0
+
+      for _, cb in ipairs(children) do
+        local searchBlob = cb._uhcSearch or ''
+        local isMatch = IsSearchMatch(searchBlob, ql)
+        if not isCollapsed and isMatch then
+          cb:Show()
+          cb:ClearAllPoints()
+          cb:SetPoint(
+            'TOPLEFT',
+            sf,
+            'TOPLEFT',
+            10,
+            -(HEADER_HEIGHT + HEADER_CONTENT_GAP + (visibleCount * ROW_HEIGHT))
+          )
+          visibleCount = visibleCount + 1
+        else
+          cb:Hide()
+        end
+      end
+
+      local expandedHeight = HEADER_HEIGHT
+      if visibleCount > 0 then
+        expandedHeight = HEADER_HEIGHT + HEADER_CONTENT_GAP + (visibleCount * ROW_HEIGHT) + 5
+      end
+      local collapsedHeight = HEADER_HEIGHT
+      sf:SetHeight(isCollapsed and collapsedHeight or expandedHeight)
+    end
+
+    if _G.__UHC_RecalcContentHeight then
+      _G.__UHC_RecalcContentHeight()
+    end
+  end
+
+  -- Expand all sections when search is active so all matches are visible
+  _G.UHC_ExpandAllSettingsSections = function()
+    local childrenBySection = _G.__UHC_SectionChildren
+    local framesBySection = _G.__UHC_SectionFrames
+    local collapsedBySection = _G.__UHC_SectionCollapsed
+    local headerIcons = _G.__UHC_SectionHeaderIcons
+    local expandedHeights = _G.__UHC_SectionExpandedHeights
+    if not childrenBySection or not framesBySection or not collapsedBySection then return end
+    for idx, frame in ipairs(framesBySection) do
+      collapsedBySection[idx] = false
+      if headerIcons and headerIcons[idx] then
+        headerIcons[idx]:SetTexture('Interface\\Buttons\\UI-MinusButton-Up')
+      end
+      local kids = childrenBySection[idx]
+      if kids then
+        for _, child in ipairs(kids) do
+          child:SetShown(true)
+        end
+      end
+      if expandedHeights and expandedHeights[idx] then
+        frame:SetHeight(expandedHeights[idx])
+      end
+    end
+    if _G.__UHC_RecalcContentHeight then
+      _G.__UHC_RecalcContentHeight()
+    end
+    _G.__UHC_SearchMode = true
+  end
+
+  -- Restore sections to their default (persisted) collapsed/open state when search clears
+  _G.UHC_RestoreSettingsSectionDefaults = function()
+    local childrenBySection = _G.__UHC_SectionChildren
+    local framesBySection = _G.__UHC_SectionFrames
+    local collapsedBySection = _G.__UHC_SectionCollapsed
+    local headerIcons = _G.__UHC_SectionHeaderIcons
+    local expandedHeights = _G.__UHC_SectionExpandedHeights
+    local collapsedHeights = _G.__UHC_SectionCollapsedHeights
+    local titles = _G.__UHC_SectionTitles
+    if not childrenBySection or not framesBySection or not collapsedBySection then return end
+    local presetStates =
+      (GLOBAL_SETTINGS and GLOBAL_SETTINGS.collapsedSettingsSections and GLOBAL_SETTINGS.collapsedSettingsSections.presetSection) or {}
+    for idx, frame in ipairs(framesBySection) do
+      local title = titles and titles[idx]
+      local isCollapsed = nil
+      if title and presetStates then
+        isCollapsed = presetStates[title]
+      end
+      if isCollapsed == nil then
+        isCollapsed = idx > 3
+      end
+      collapsedBySection[idx] = isCollapsed
+      if headerIcons and headerIcons[idx] then
+        headerIcons[idx]:SetTexture(
+          isCollapsed and 'Interface\\Buttons\\UI-PlusButton-Up' or 'Interface\\Buttons\\UI-MinusButton-Up'
+        )
+      end
+      local kids = childrenBySection[idx]
+      if kids then
+        for _, child in ipairs(kids) do
+          child:SetShown(not isCollapsed)
+        end
+      end
+      if isCollapsed then
+        if collapsedHeights and collapsedHeights[idx] then
+          frame:SetHeight(collapsedHeights[idx])
+        end
+      else
+        if expandedHeights and expandedHeights[idx] then
+          frame:SetHeight(expandedHeights[idx])
+        end
+      end
+    end
+    if _G.__UHC_RecalcContentHeight then
+      _G.__UHC_RecalcContentHeight()
+    end
+    _G.__UHC_SearchMode = false
+  end
+
+  searchBox:SetScript('OnTextChanged', function(self)
+    local txt = self:GetText() or ''
+    local wasSearching = _G.__UHC_SearchMode
+    if txt ~= '' then
+      if not wasSearching and _G.UHC_ExpandAllSettingsSections then
+        _G.UHC_ExpandAllSettingsSections()
+      end
+    else
+      if wasSearching and _G.UHC_RestoreSettingsSectionDefaults then
+        _G.UHC_RestoreSettingsSectionDefaults()
+      end
+    end
+    if txt == '' then
+      searchPlaceholder:Show()
+    else
+      searchPlaceholder:Hide()
+    end
+    if _G.UHC_ApplySettingsSearchFilter then
+      _G.UHC_ApplySettingsSearchFilter(txt)
+    end
+  end)
+  searchBox:SetScript('OnEditFocusGained', function()
+    if (searchBox:GetText() or '') == '' then
+      searchPlaceholder:Hide()
+    end
+  end)
+  searchBox:SetScript('OnEditFocusLost', function()
+    if (searchBox:GetText() or '') == '' then
+      searchPlaceholder:Show()
+    end
+  end)
+  searchBox:SetScript('OnEscapePressed', function(self)
+    self:SetText('')
+    self:ClearFocus()
+    if _G.UHC_RestoreSettingsSectionDefaults then
+      _G.UHC_RestoreSettingsSectionDefaults()
+    end
+    if _G.UHC_ApplySettingsSearchFilter then
+      _G.UHC_ApplySettingsSearchFilter('')
+    end
+  end)
+
+  clearSearchButton:SetScript('OnClick', function()
+    searchBox:SetText('')
+    if _G.UHC_RestoreSettingsSectionDefaults then
+      _G.UHC_RestoreSettingsSectionDefaults()
+    end
+    if _G.UHC_ApplySettingsSearchFilter then
+      _G.UHC_ApplySettingsSearchFilter('')
+    end
+  end)
+
+  -- Fixed footer so Save button never scrolls off-screen
+  local footerFrame = CreateFrame('Frame', nil, tabContents[2])
+  footerFrame:SetPoint('LEFT', tabContents[2], 'LEFT', 10, 0)
+  footerFrame:SetPoint('RIGHT', tabContents[2], 'RIGHT', -10, 0)
+  footerFrame:SetPoint('BOTTOM', tabContents[2], 'BOTTOM', 0, 10)
+  footerFrame:SetHeight(44)
+
+  -- Create main container frame with background (similar to StatisticsTab)
+  local optionsFrame = CreateFrame('Frame', nil, tabContents[2], 'BackdropTemplate')
+  optionsFrame:SetPoint('TOP', searchBox, 'BOTTOM', 0, -10)
+  optionsFrame:SetPoint('LEFT', tabContents[2], 'LEFT', 10, 0)
+  optionsFrame:SetPoint('RIGHT', tabContents[2], 'RIGHT', -10, 0)
+  optionsFrame:SetPoint('BOTTOM', footerFrame, 'TOP', 0, 10)
+  optionsFrame:SetBackdrop({
+    bgFile = 'Interface\\DialogFrame\\UI-DialogBox-Background',
+    edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border',
+    tile = true,
+    tileSize = 64,
+    edgeSize = 16,
+    insets = {
+      left = 3,
+      right = 3,
+      top = 3,
+      bottom = 3,
+    },
+  })
+  optionsFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.95) -- Darker, more solid background
+  optionsFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8) -- Softer border
+  local scrollFrame = CreateFrame('ScrollFrame', nil, optionsFrame, 'UIPanelScrollFrameTemplate')
+  scrollFrame:SetPoint('TOPLEFT', optionsFrame, 'TOPLEFT', 10, -10)
+  scrollFrame:SetPoint('BOTTOMRIGHT', optionsFrame, 'BOTTOMRIGHT', -30, 10) -- Leave room for scrollbar on right
+  local scrollChild = CreateFrame('Frame')
+  scrollFrame:SetScrollChild(scrollChild)
+  -- Initial size; will be recalculated dynamically as sections expand/collapse
+  scrollChild:SetHeight(100)
+  local function updateScrollChildWidth()
+    local gutter = 1
+    local w = scrollFrame:GetWidth() - gutter
+    if w and w > 0 then
+      scrollChild:SetWidth(w)
+    end
+  end
+  scrollFrame:SetScript('OnSizeChanged', function()
+    updateScrollChildWidth()
+  end)
+  updateScrollChildWidth()
+
+  -- Keep a handle to the last section frame so we can anchor subsequent sections beneath it
+  local lastSectionFrame = nil
+  -- Track all preset section frames and a dynamic height recalculator
+  local sectionFrames = {}
+  local recalcContentHeight = nil
+
+  function createCheckboxes()
+    -- Initialize slider defaults for settings that don't exist
+    for _, sliderItem in ipairs(settingsSliderOptions) do
+      if tempSettings[sliderItem.dbSettingsValueName] == nil then
+        tempSettings[sliderItem.dbSettingsValueName] = sliderItem.defaultValue
+      end
+    end
+
+    local HEADER_HEIGHT = LAYOUT.HEADER_HEIGHT
+    local ROW_HEIGHT = LAYOUT.ROW_HEIGHT
+    local SECTION_GAP = LAYOUT.SECTION_GAP
+    local HEADER_CONTENT_GAP = LAYOUT.HEADER_CONTENT_GAP
+    local prevSectionFrame = nil
+
+    local sectionChildren = {}
+    local sectionCollapsed = {}
+    local sectionChildSettingNames = {}
+    local sectionCountTexts = {}
+    local sectionHeaderIcons = {}
+    local sectionExpandedHeights = {}
+    local sectionCollapsedHeights = {}
+    local sectionTitles = {}
+
+    -- Expose layout numbers and section arrays for the search filter
+    _G.__UHC_SECTION_HEADER_HEIGHT = LAYOUT.HEADER_HEIGHT
+    _G.__UHC_ROW_HEIGHT = LAYOUT.ROW_HEIGHT
+    _G.__UHC_HEADER_CONTENT_GAP = LAYOUT.HEADER_CONTENT_GAP
+
+    local function updateSectionCount(idx)
+      if not sectionCountTexts[idx] or not sectionChildSettingNames[idx] then return end
+      local total = #sectionChildSettingNames[idx]
+      local selected = 0
+      for _, settingName in ipairs(sectionChildSettingNames[idx]) do
+        local value = tempSettings[settingName]
+        -- For sliders (numeric values), count as selected if value exists and > 0
+        -- For checkboxes (boolean values), count as selected if true
+        local isSlider = false
+        for _, sliderItem in ipairs(settingsSliderOptions) do
+          if sliderItem.dbSettingsValueName == settingName then
+            isSlider = true
+            break
+          end
+        end
+
+        if isSlider then
+          if value and value > 0 then
+            selected = selected + 1
+          end
+        else
+          if value then
+            selected = selected + 1
+          end
+        end
+      end
+      sectionCountTexts[idx]:SetText(selected .. '/' .. total)
+    end
+
+    local presetSections = GetPresetSections('simple', true) -- Include Misc section
+    for sectionIndex, section in ipairs(presetSections) do
+      sectionTitles[sectionIndex] = section.title
+      -- Container for the whole section so collapsing reflows subsequent sections
+      local sectionFrame = CreateFrame('Frame', nil, scrollChild, 'BackdropTemplate')
+      sectionFrame:SetWidth(LAYOUT.PAGE_WIDTH) -- Increased width to match new layout
+      if prevSectionFrame then
+        sectionFrame:SetPoint('TOPLEFT', prevSectionFrame, 'BOTTOMLEFT', 0, -SECTION_GAP)
+        sectionFrame:SetPoint('TOPRIGHT', prevSectionFrame, 'BOTTOMRIGHT', 0, -SECTION_GAP)
+      else
+        sectionFrame:SetPoint('TOPLEFT', scrollChild, 'TOPLEFT', 10, -10)
+        sectionFrame:SetPoint('TOPRIGHT', scrollChild, 'TOPRIGHT', 0, -10)
+      end
+      -- Modern content frame styling (similar to StatisticsTab)
+      sectionFrame:SetBackdrop({
+        bgFile = 'Interface\\Buttons\\WHITE8X8',
+        edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border',
+        tile = true,
+        tileSize = 8,
+        edgeSize = 10,
+        insets = {
+          left = 3,
+          right = 3,
+          top = 3,
+          bottom = 3,
+        },
+      })
+      sectionFrame:SetBackdropColor(0.08, 0.08, 0.1, 0.6) -- Very subtle dark background
+      sectionFrame:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.5) -- Subtle border
+      -- Clickable header inside the section container
+      local sectionHeaderButton = CreateFrame('Button', nil, sectionFrame, 'BackdropTemplate')
+      sectionHeaderButton:SetPoint('TOPLEFT', sectionFrame, 'TOPLEFT', 0, 0)
+      sectionHeaderButton:SetPoint('TOPRIGHT', sectionFrame, 'TOPRIGHT', 0, 0)
+      sectionHeaderButton:SetHeight(HEADER_HEIGHT)
+      sectionHeaderButton:SetBackdrop({
+        bgFile = 'Interface\\Buttons\\WHITE8X8',
+        edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border',
+        tile = true,
+        tileSize = 8,
+        edgeSize = 12,
+        insets = {
+          left = 3,
+          right = 3,
+          top = 3,
+          bottom = 3,
+        },
+      })
+      sectionHeaderButton:SetBackdropColor(0.15, 0.15, 0.2, 0.85) -- Darker blue-tinted background
+      sectionHeaderButton:SetBackdropBorderColor(0.5, 0.5, 0.6, 0.9) -- Softer blue-tinted border
+      sectionHeaderButton:SetScript('OnEnter', function(self)
+        self:SetBackdropColor(0.2, 0.2, 0.28, 0.95)
+        self:SetBackdropBorderColor(0.6, 0.6, 0.75, 1)
+      end)
+      sectionHeaderButton:SetScript('OnLeave', function(self)
+        self:SetBackdropColor(0.15, 0.15, 0.2, 0.85)
+        self:SetBackdropBorderColor(0.5, 0.5, 0.6, 0.9)
+      end)
+
+      local sectionHeader =
+        sectionHeaderButton:CreateFontString(nil, 'OVERLAY', 'GameFontNormalLarge')
+      sectionHeader:SetPoint('LEFT', sectionHeaderButton, 'LEFT', 4, 0)
+      sectionHeader:SetText(section.title)
+      sectionHeader:SetTextColor(0.9, 0.85, 0.75, 1) -- Warmer, more readable color
+      sectionHeader:SetShadowOffset(1, -1)
+      sectionHeader:SetShadowColor(0, 0, 0, 0.8)
+
+      local headerIcon = sectionHeaderButton:CreateTexture(nil, 'ARTWORK')
+      local headerCountText = sectionHeaderButton:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+      headerIcon:SetPoint('RIGHT', sectionHeaderButton, 'RIGHT', -6, 0)
+      headerCountText:SetPoint('RIGHT', headerIcon, 'LEFT', -6, 0)
+      headerIcon:SetSize(16, 16)
+      headerIcon:SetTexture('Interface\\Buttons\\UI-MinusButton-Up')
+      sectionHeaderIcons[sectionIndex] = headerIcon
+      -- Hide count for sections below the Optional features note (sections after Extreme)
+      if sectionIndex > 3 then
+        headerCountText:Hide()
+      end
+
+      sectionChildren[sectionIndex] = {}
+      sectionChildSettingNames[sectionIndex] = {}
+
+      local numRows = 0
+      for _, settingName in ipairs(section.settings) do
+        local checkboxItem = nil
+        local sliderItem = nil
+
+        -- Check if this setting is a checkbox
+        for _, item in ipairs(settingsCheckboxOptions) do
+          if item.dbSettingsValueName == settingName then
+            checkboxItem = item
+            break
+          end
+        end
+
+        -- Check if this setting is a slider
+        if not checkboxItem then
+          for _, item in ipairs(settingsSliderOptions) do
+            if item.dbSettingsValueName == settingName then
+              sliderItem = item
+              break
+            end
+          end
+        end
+
+        if checkboxItem then
+          -- Check conditional visibility
+          local shouldShow = true
+          if checkboxItem.conditionalShow then
+            shouldShow = checkboxItem.conditionalShow()
+          end
+
+          if shouldShow then
+            numRows = numRows + 1
+            local checkbox =
+              CreateFrame('CheckButton', nil, sectionFrame, 'ChatConfigCheckButtonTemplate')
+            checkbox:SetPoint(
+              'TOPLEFT',
+              sectionFrame,
+              'TOPLEFT',
+              10,
+              -(HEADER_HEIGHT + HEADER_CONTENT_GAP + ((numRows - 1) * ROW_HEIGHT))
+            )
+            checkbox.Text:SetText(checkboxItem.name)
+            checkbox.Text:SetPoint('LEFT', checkbox, 'RIGHT', 5, 0)
+            checkbox:SetChecked(tempSettings[checkboxItem.dbSettingsValueName])
+
+            -- Precompute search blob for fast filtering
+            local n = checkboxItem.name or ''
+            local t = checkboxItem.tooltip or ''
+            local k = checkboxItem.dbSettingsValueName or ''
+            checkbox._uhcSearch = string.lower(n .. ' ' .. t .. ' ' .. k)
+
+            -- Handle dependencies: grey out and disable if dependency is not met
+            local function updateDependencyState()
+              local shouldDisable = false
+
+              if checkboxItem.dependsOn then
+                local dependencyEnabled = tempSettings[checkboxItem.dependsOn] or false
+                if not dependencyEnabled then
+                  shouldDisable = true
+                end
+              end
+
+              if not shouldDisable and checkboxItem.dependsOff then
+                local blockerEnabled = tempSettings[checkboxItem.dependsOff] or false
+                if blockerEnabled then
+                  shouldDisable = true
+                end
+              end
+
+              if shouldDisable then
+                checkbox:Disable()
+                checkbox.Text:SetTextColor(0.5, 0.5, 0.5) -- Grey out text
+                checkbox:SetChecked(false)
+                tempSettings[checkboxItem.dbSettingsValueName] = false
+                cascadeDependencyUpdates(checkboxItem.dbSettingsValueName)
+              else
+                checkbox:Enable()
+                checkbox.Text:SetTextColor(1, 1, 1) -- Restore color
+              end
+            end
+
+            -- Check dependency on creation
+            updateDependencyState()
+
+            checkboxes[checkboxItem.dbSettingsValueName] = checkbox
+            table.insert(sectionChildren[sectionIndex], checkbox)
+            table.insert(sectionChildSettingNames[sectionIndex], checkboxItem.dbSettingsValueName)
+
+            -- Store dependency update function for later use
+            checkbox._updateDependency = updateDependencyState
+
+            checkbox:SetScript('OnClick', function(self)
+              -- Prevent clicking if dependency is not met
+              if checkboxItem.dependsOn and not (tempSettings[checkboxItem.dependsOn] or false) then return end
+              if checkboxItem.dependsOff and (tempSettings[checkboxItem.dependsOff] or false) then return end
+              tempSettings[checkboxItem.dbSettingsValueName] = self:GetChecked()
+
+              if checkboxItem.dbSettingsValueName == 'autoJoinUHCChannel' then
+                if self:GetChecked() then
+                  if JoinUHCChannel then
+                    JoinUHCChannel(true)
+                  end
+                else
+                  LeaveChannelByName('uhc')
+                end
+              end
+
+              -- Update any checkboxes that depend on this one
+              cascadeDependencyUpdates(checkboxItem.dbSettingsValueName)
+
+              updateSectionCount(sectionIndex)
+            end)
+
+            checkbox:SetScript('OnEnter', function(self)
+              GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+              local tooltipText = checkboxItem.tooltip or ''
+              if checkboxItem.dependsOn then
+                local dependencyName = nil
+                for _, item in ipairs(settingsCheckboxOptions) do
+                  if item.dbSettingsValueName == checkboxItem.dependsOn then
+                    dependencyName = item.name
+                    break
+                  end
+                end
+                if dependencyName then
+                  local dependencyEnabled = tempSettings[checkboxItem.dependsOn] or false
+                  if not dependencyEnabled then
+                    tooltipText =
+                      tooltipText .. '\n\n|cFFFF0000Requires: ' .. dependencyName .. '|r'
+                  end
+                end
+              end
+              if checkboxItem.dependsOff then
+                local conflictName = nil
+                for _, item in ipairs(settingsCheckboxOptions) do
+                  if item.dbSettingsValueName == checkboxItem.dependsOff then
+                    conflictName = item.name
+                    break
+                  end
+                end
+                if conflictName then
+                  local conflictEnabled = tempSettings[checkboxItem.dependsOff] or false
+                  if conflictEnabled then
+                    tooltipText =
+                      tooltipText .. '\n\n|cFFFF0000Conflicts with: ' .. conflictName .. '|r'
+                  end
+                end
+              end
+              GameTooltip:SetText(tooltipText)
+              GameTooltip:Show()
+            end)
+
+            checkbox:SetScript('OnLeave', function(self)
+              GameTooltip:Hide()
+            end)
+          end -- End of shouldShow check
+        elseif sliderItem then
+          numRows = numRows + 1
+
+          -- Create slider frame
+          local sliderFrame = CreateFrame('Frame', nil, sectionFrame)
+          sliderFrame:SetSize(500, LAYOUT.ROW_HEIGHT) -- Increased width to match new layout
+          sliderFrame:SetPoint(
+            'TOPLEFT',
+            sectionFrame,
+            'TOPLEFT',
+            10,
+            -(HEADER_HEIGHT + HEADER_CONTENT_GAP + ((numRows - 1) * ROW_HEIGHT))
+          )
+
+          -- Create slider label
+          local sliderLabel = sliderFrame:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+          sliderLabel:SetPoint('LEFT', sliderFrame, 'LEFT', 0, 0)
+          sliderLabel:SetText(sliderItem.name)
+
+          -- Create the slider
+          local slider = CreateFrame('Slider', nil, sliderFrame, 'OptionsSliderTemplate')
+          slider:SetSize(LAYOUT.SLIDER_WIDTH, 15)
+          slider:SetPoint('RIGHT', sliderFrame, 'RIGHT', -50, 0)
+          slider:SetMinMaxValues(sliderItem.minValue, sliderItem.maxValue)
+          slider:SetValue(tempSettings[sliderItem.dbSettingsValueName] or sliderItem.defaultValue)
+          slider:SetValueStep(1)
+          slider:SetObeyStepOnDrag(true)
+
+          -- Create value label
+          local valueLabel = sliderFrame:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+          valueLabel:SetPoint('RIGHT', sliderFrame, 'RIGHT', -10, 0)
+          valueLabel:SetText(tostring(math.floor(slider:GetValue())))
+
+          -- Precompute search blob for fast filtering
+          local n = sliderItem.name or ''
+          local t = sliderItem.tooltip or ''
+          local k = sliderItem.dbSettingsValueName or ''
+          sliderFrame._uhcSearch = string.lower(n .. ' ' .. t .. ' ' .. k)
+
+          sliders[sliderItem.dbSettingsValueName] = slider
+          table.insert(sectionChildren[sectionIndex], sliderFrame)
+          table.insert(sectionChildSettingNames[sectionIndex], sliderItem.dbSettingsValueName)
+
+          -- Handle slider value changes
+          slider:SetScript('OnValueChanged', function(self, value)
+            local newValue = math.floor(value)
+            tempSettings[sliderItem.dbSettingsValueName] = newValue
+            valueLabel:SetText(tostring(newValue))
+
+            -- Handle XP Bar height changes
+            if sliderItem.dbSettingsValueName == 'xpBarHeight' and _G.UpdateExpBarHeight then
+              UpdateExpBarHeight()
+            end
+          end)
+
+          -- Add tooltip functionality
+          sliderFrame:EnableMouse(true)
+          sliderFrame:SetScript('OnEnter', function(self)
+            GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+            GameTooltip:SetText(sliderItem.tooltip)
+            GameTooltip:Show()
+          end)
+
+          sliderFrame:SetScript('OnLeave', function(self)
+            GameTooltip:Hide()
+          end)
+        elseif settingName == 'soundbiteChannel' then
+          -- Special-case: Soundbite channel dropdown row (not a simple checkbox/slider)
+          numRows = numRows + 1
+
+          local row = CreateFrame('Frame', nil, sectionFrame)
+          row:SetSize(LAYOUT.ROW_WIDTH, LAYOUT.ROW_HEIGHT)
+          row:SetPoint(
+            'TOPLEFT',
+            sectionFrame,
+            'TOPLEFT',
+            10,
+            -(HEADER_HEIGHT + HEADER_CONTENT_GAP + ((numRows - 1) * ROW_HEIGHT))
+          )
+
+          local label = row:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+          label:SetPoint('LEFT', row, 'LEFT', 0, 0)
+          label:SetText('Soundbite Channel')
+
+          -- Available sound channels (aligned with in-game Sound options)
+          local CHANNEL_OPTIONS = { {
+            text = 'Master',
+            value = 'Master',
+          }, {
+            text = 'Music',
+            value = 'Music',
+          }, {
+            text = 'Effects',
+            value = 'SFX',
+          }, {
+            text = 'Ambience',
+            value = 'Ambience',
+          }, {
+            text = 'Dialog',
+            value = 'Dialog',
+          } }
+
+          -- Initialize setting from GLOBAL_SETTINGS or default to Master
+          if tempSettings.soundbiteChannel == nil then
+            if GLOBAL_SETTINGS and GLOBAL_SETTINGS.soundbiteChannel ~= nil then
+              tempSettings.soundbiteChannel = GLOBAL_SETTINGS.soundbiteChannel
+            else
+              tempSettings.soundbiteChannel = 'Master'
+            end
+          end
+
+          local dropdown = CreateFrame('Frame', nil, row, 'UIDropDownMenuTemplate')
+          dropdown:SetPoint('LEFT', label, 'RIGHT', 10, -2)
+
+          local function GetDisplayTextForChannel(value)
+            for _, opt in ipairs(CHANNEL_OPTIONS) do
+              if opt.value == value then
+                return opt.text
+              end
+            end
+            return 'Master'
+          end
+
+          UIDropDownMenu_SetWidth(dropdown, 150)
+          UIDropDownMenu_SetText(dropdown, GetDisplayTextForChannel(tempSettings.soundbiteChannel))
+
+          UIDropDownMenu_Initialize(dropdown, function(self, level)
+            local info = UIDropDownMenu_CreateInfo()
+            for _, opt in ipairs(CHANNEL_OPTIONS) do
+              info = UIDropDownMenu_CreateInfo()
+              info.text = opt.text
+              info.func = function()
+                tempSettings.soundbiteChannel = opt.value
+                UIDropDownMenu_SetText(dropdown, opt.text)
+                updateSectionCount(sectionIndex)
+              end
+              info.checked = (tempSettings.soundbiteChannel == opt.value)
+              UIDropDownMenu_AddButton(info, level)
+            end
+          end)
+
+          -- Tooltip anchored to the dropdown so it lines up with the control
+          dropdown:EnableMouse(true)
+          dropdown:SetScript('OnEnter', function(self)
+            GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+            GameTooltip:SetText('Select a sound channel and control volume in game settings.')
+            GameTooltip:Show()
+          end)
+          dropdown:SetScript('OnLeave', function()
+            GameTooltip:Hide()
+          end)
+
+          -- Search integration
+          row._uhcSearch =
+            string.lower('soundbite channel audio volume master sfx sound effects music ambience')
+
+          table.insert(sectionChildren[sectionIndex], row)
+          table.insert(sectionChildSettingNames[sectionIndex], 'soundbiteChannel')
+        end
+      end
+
+      local expandedHeight = HEADER_HEIGHT + HEADER_CONTENT_GAP + (numRows * ROW_HEIGHT) + 5
+      local collapsedHeight = HEADER_HEIGHT
+      sectionExpandedHeights[sectionIndex] = expandedHeight
+      sectionCollapsedHeights[sectionIndex] = collapsedHeight
+
+      -- Determine initial collapsed state (persisted or default collapsed for sections after Ultra)
+      local presetStates = GLOBAL_SETTINGS.collapsedSettingsSections.presetSection
+      local initialCollapsed = presetStates[section.title]
+      if initialCollapsed == nil then
+        initialCollapsed = sectionIndex > 3 -- collapse Experimental and below by default
+      end
+      sectionCollapsed[sectionIndex] = initialCollapsed
+      headerIcon:SetTexture(
+        initialCollapsed and 'Interface\\Buttons\\UI-PlusButton-Up' or 'Interface\\Buttons\\UI-MinusButton-Up'
+      )
+      for _, child in ipairs(sectionChildren[sectionIndex]) do
+        child:SetShown(not initialCollapsed)
+      end
+      sectionFrame:SetHeight(initialCollapsed and collapsedHeight or expandedHeight)
+
+      -- Initialize and display count text for this section
+      sectionCountTexts[sectionIndex] = headerCountText
+      updateSectionCount(sectionIndex)
+
+      -- Toggle all child checkboxes and resize the section so the layout reflows
+      sectionHeaderButton:SetScript('OnClick', function()
+        local collapsed = not sectionCollapsed[sectionIndex]
+        sectionCollapsed[sectionIndex] = collapsed
+        headerIcon:SetTexture(
+          collapsed and 'Interface\\Buttons\\UI-PlusButton-Up' or 'Interface\\Buttons\\UI-MinusButton-Up'
+        )
+        for _, child in ipairs(sectionChildren[sectionIndex]) do
+          child:SetShown(not collapsed)
+        end
+        sectionFrame:SetHeight(collapsed and collapsedHeight or expandedHeight)
+        -- Persist state
+        GLOBAL_SETTINGS.collapsedSettingsSections.presetSection[section.title] = collapsed
+        if UHC_SaveCharacterSettings then
+          UHC_SaveCharacterSettings(GLOBAL_SETTINGS)
+        end
+        if recalcContentHeight then
+          recalcContentHeight()
+        end
+        -- Reapply current filter to fix heights and visibility after toggle
+        if _G.UHC_ApplySettingsSearchFilter then
+          _G.UHC_ApplySettingsSearchFilter(_G.__UHC_CurrentSearchQuery or '')
+        end
+      end)
+
+      prevSectionFrame = sectionFrame
+      lastSectionFrame = sectionFrame
+      table.insert(sectionFrames, sectionFrame)
+      -- Insert an informational note after the Extreme section
+      if sectionIndex == 3 then
+        local infoFrame = CreateFrame('Frame', nil, scrollChild)
+        infoFrame:SetWidth(LAYOUT.PAGE_WIDTH) -- Increased width to match new layout
+        infoFrame:SetPoint('TOPLEFT', sectionFrame, 'BOTTOMLEFT', 0, -LAYOUT.SECTION_GAP)
+        infoFrame:SetPoint('TOPRIGHT', sectionFrame, 'BOTTOMRIGHT', 0, -LAYOUT.SECTION_GAP)
+        infoFrame:SetHeight(64)
+
+        -- Divider line above the note
+        local divider = infoFrame:CreateTexture(nil, 'ARTWORK')
+        divider:SetTexture('Interface\\Buttons\\WHITE8X8')
+        divider:SetVertexColor(0.6, 0.6, 0.6, 0.6)
+        divider:SetPoint('TOPLEFT', infoFrame, 'TOPLEFT', 0, -2)
+        divider:SetPoint('TOPRIGHT', infoFrame, 'TOPRIGHT', 0, -2)
+        divider:SetHeight(1)
+
+        -- Small title
+        local titleText = infoFrame:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightLarge')
+        titleText:SetPoint('TOPLEFT', divider, 'BOTTOMLEFT', 10, -12)
+        titleText:SetText('Optional features')
+
+        -- Body text under the title
+        local bodyText = infoFrame:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+        bodyText:SetPoint('TOPLEFT', titleText, 'BOTTOMLEFT', 0, -2)
+        bodyText:SetPoint('RIGHT', infoFrame, 'RIGHT', -10, 0)
+        bodyText:SetJustifyH('LEFT')
+        bodyText:SetJustifyV('TOP')
+        bodyText:SetText(
+          'Everything below is optional and not part of the core Ultra experience. Use these tweaks if they suit your playstyle.'
+        )
+
+        -- Ensure subsequent sections anchor below this note
+        prevSectionFrame = infoFrame
+        lastSectionFrame = infoFrame
+      end
+    end
+
+    -- Expose a global to refresh all section counts after bulk changes
+    _G.updateSectionCounts = function()
+      for idx, _ in ipairs(sectionCountTexts) do
+        updateSectionCount(idx)
+      end
+    end
+
+    -- Expose built arrays for search filter usage
+    _G.__UHC_SectionChildren = sectionChildren
+    _G.__UHC_SectionFrames = sectionFrames
+    _G.__UHC_SectionCollapsed = sectionCollapsed
+    _G.__UHC_SectionHeaderIcons = sectionHeaderIcons
+    _G.__UHC_SectionExpandedHeights = sectionExpandedHeights
+    _G.__UHC_SectionCollapsedHeights = sectionCollapsedHeights
+    _G.__UHC_SectionTitles = sectionTitles
+  end
+
+  -- Function to check if player is in combat
+  local function isPlayerInCombat()
+    return UnitAffectingCombat('player') == true
+  end
+
+  -- Create save button
+  local saveButton = CreateFrame('Button', nil, footerFrame, 'UIPanelButtonTemplate')
+  saveButton:SetSize(120, 30)
+  saveButton:SetPoint('CENTER', footerFrame, 'CENTER', 0, 0)
+  saveButton:SetText('Save and Reload')
+
+  -- Function to update save button state (defined after saveButton is created)
+  local function updateSaveButtonState()
+    if not saveButton then return end
+    local inCombat = isPlayerInCombat()
+
+    saveButton:SetEnabled(not inCombat)
+
+    if inCombat then
+      saveButton:SetText('In Combat')
+    else
+      saveButton:SetText('Save and Reload')
+    end
+  end
+
+  -- Register for combat events
+  local combatFrame = CreateFrame('Frame')
+  combatFrame:RegisterEvent('PLAYER_REGEN_DISABLED') -- Entered combat
+  combatFrame:RegisterEvent('PLAYER_REGEN_ENABLED') -- Left combat
+  combatFrame:SetScript('OnEvent', function()
+    updateSaveButtonState()
+  end)
+
+  -- Initial state
+  updateSaveButtonState()
+
+  saveButton:SetScript('OnClick', function()
+    if ShowConfirmationDialog then
+      ShowConfirmationDialog(
+        'Save and Reload',
+        'Are you sure you want to save your settings and reload the UI?',
+        function()
+          for key, value in pairs(tempSettings) do
+            GLOBAL_SETTINGS[key] = value
+          end
+
+          -- If the player has chosen a Rotate Minimap state via the ULTRA
+          -- checkbox, write it back to the Blizzard CVar now so that on
+          -- next load ULTRA and the base game are in sync.
+          if tempSettings.rotateMinimapOnResourceMap ~= nil then
+            SetCVar('RotateMinimap', tempSettings.rotateMinimapOnResourceMap and '1' or '0')
+          end
+
+          -- The player explicitly saved ULTRA settings; treat ULTRA as the
+          -- source of truth for minimap rotation until they change the WoW
+          -- RotateMinimap option again (which will flip the source back).
+          if GLOBAL_SETTINGS.rotateMinimapOnResourceMap ~= nil then
+            GLOBAL_SETTINGS.rotateMinimapSource = 'ultra'
+          end
+
+          -- Apply the new completely remove settings immediately
+          SetPlayerFrameDisplay()
+
+          -- Set target frame accordingly
+          if GLOBAL_SETTINGS.hideTargetFrame or GLOBAL_SETTINGS.completelyRemoveTargetFrame then
+            SetTargetFrameDisplay({})
+          end
+
+          -- Handle XP Bar settings
+          if GLOBAL_SETTINGS.showExpBar then
+            InitializeExpBar()
+          else
+            HideExpBar()
+          end
+
+          if GLOBAL_SETTINGS.hideDefaultExpBar then
+            HideDefaultExpBar()
+          else
+            ShowDefaultExpBar()
+          end
+
+          -- Update XP bar color and height if it exists
+          if _G.UpdateExpBarColor then
+            UpdateExpBarColor()
+          end
+          if _G.UpdateExpBarHeight then
+            UpdateExpBarHeight()
+          end
+
+          UHC_SaveCharacterSettings(GLOBAL_SETTINGS)
+          ReloadUI()
+        end,
+        nil,
+        'Save and Reload',
+        'Cancel'
+      )
+    else
+      -- Fallback if confirmation dialog isn't loaded
+      for key, value in pairs(tempSettings) do
+        GLOBAL_SETTINGS[key] = value
+      end
+
+      if tempSettings.rotateMinimapOnResourceMap ~= nil then
+        SetCVar('RotateMinimap', tempSettings.rotateMinimapOnResourceMap and '1' or '0')
+      end
+
+      -- Apply the new completely remove settings immediately
+      SetPlayerFrameDisplay()
+
+      -- Set target frame accordingly
+      if GLOBAL_SETTINGS.hideTargetFrame or GLOBAL_SETTINGS.completelyRemoveTargetFrame then
+        SetTargetFrameDisplay({})
+      end
+
+      -- Handle XP Bar settings
+      if GLOBAL_SETTINGS.showExpBar then
+        InitializeExpBar()
+      else
+        HideExpBar()
+      end
+
+      if GLOBAL_SETTINGS.hideDefaultExpBar then
+        HideDefaultExpBar()
+      else
+        ShowDefaultExpBar()
+      end
+
+      -- Update XP bar color and height if it exists
+      if _G.UpdateExpBarColor then
+        UpdateExpBarColor()
+      end
+      if _G.UpdateExpBarHeight then
+        UpdateExpBarHeight()
+      end
+
+      UHC_SaveCharacterSettings(GLOBAL_SETTINGS)
+      ReloadUI()
+    end
+  end)
+
+  _G.updateCheckboxes = updateCheckboxes
+  _G.updateSliders = updateSliders
+  _G.updateRadioButtons = updateRadioButtons
+  _G.updatePresetSelectionDisplay = updatePresetSelectionDisplay
+  _G.applyPreset = applyPreset
+  _G.createCheckboxes = createCheckboxes
+  _G.checkboxes = checkboxes
+  _G.sliders = sliders
+  _G.presetButtons = presetButtons
+  _G.selectedPreset = selectedPreset
+
+  createCheckboxes()
+
+  -- Collapsible: Resource Bar Colors
+  local HEADER_HEIGHT = LAYOUT.HEADER_HEIGHT
+  local ROW_HEIGHT = LAYOUT.ROW_HEIGHT
+  local HEADER_CONTENT_GAP = LAYOUT.HEADER_CONTENT_GAP
+  local SUBHEADER_TO_ROWS_GAP = 10
+  local LOCK_ROW_HEIGHT = 24
+  local LOCK_ROW_GAP = 8
+
+  local colorSectionFrame = CreateFrame('Frame', nil, scrollChild, 'BackdropTemplate')
+  colorSectionFrame:SetWidth(LAYOUT.PAGE_WIDTH) -- Increased width to match new layout
+  if lastSectionFrame then
+    colorSectionFrame:SetPoint('TOPLEFT', lastSectionFrame, 'BOTTOMLEFT', 0, -10)
+    colorSectionFrame:SetPoint('TOPRIGHT', lastSectionFrame, 'BOTTOMRIGHT', 0, -10)
+  else
+    colorSectionFrame:SetPoint('TOPLEFT', scrollChild, 'TOPLEFT', 10, -10)
+    colorSectionFrame:SetPoint('TOPRIGHT', scrollChild, 'TOPRIGHT', 0, -10)
+  end
+  -- Modern content frame styling (similar to StatisticsTab)
+  colorSectionFrame:SetBackdrop({
+    bgFile = 'Interface\\Buttons\\WHITE8X8',
+    edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border',
+    tile = true,
+    tileSize = 8,
+    edgeSize = 10,
+    insets = {
+      left = 3,
+      right = 3,
+      top = 3,
+      bottom = 3,
+    },
+  })
+  colorSectionFrame:SetBackdropColor(0.08, 0.08, 0.1, 0.6) -- Very subtle dark background
+  colorSectionFrame:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.5) -- Subtle border
+  local colorHeaderButton = CreateFrame('Button', nil, colorSectionFrame, 'BackdropTemplate')
+  colorHeaderButton:SetPoint('TOPLEFT', colorSectionFrame, 'TOPLEFT', 0, 0)
+  colorHeaderButton:SetPoint('TOPRIGHT', colorSectionFrame, 'TOPRIGHT', 0, 0)
+  colorHeaderButton:SetHeight(HEADER_HEIGHT)
+  colorHeaderButton:SetBackdrop({
+    bgFile = 'Interface\\Buttons\\WHITE8X8',
+    edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border',
+    tile = true,
+    tileSize = 8,
+    edgeSize = 12,
+    insets = {
+      left = 3,
+      right = 3,
+      top = 3,
+      bottom = 3,
+    },
+  })
+  colorHeaderButton:SetBackdropColor(0.15, 0.15, 0.2, 0.85) -- Darker blue-tinted background
+  colorHeaderButton:SetBackdropBorderColor(0.5, 0.5, 0.6, 0.9) -- Softer blue-tinted border
+  colorHeaderButton:SetScript('OnEnter', function(self)
+    self:SetBackdropColor(0.2, 0.2, 0.28, 0.95)
+    self:SetBackdropBorderColor(0.6, 0.6, 0.75, 1)
+  end)
+  colorHeaderButton:SetScript('OnLeave', function(self)
+    self:SetBackdropColor(0.15, 0.15, 0.2, 0.85)
+    self:SetBackdropBorderColor(0.5, 0.5, 0.6, 0.9)
+  end)
+  local colorHeaderText = colorHeaderButton:CreateFontString(nil, 'OVERLAY', 'GameFontNormalLarge')
+  colorHeaderText:SetPoint('LEFT', colorHeaderButton, 'LEFT', 4, 0)
+  colorHeaderText:SetText('Ultra UI Settings')
+  colorHeaderText:SetTextColor(0.9, 0.85, 0.75, 1) -- Warmer, more readable color
+  colorHeaderText:SetShadowOffset(1, -1)
+  colorHeaderText:SetShadowColor(0, 0, 0, 0.8)
+  local colorHeaderIcon = colorHeaderButton:CreateTexture(nil, 'ARTWORK')
+  colorHeaderIcon:SetPoint('RIGHT', colorHeaderButton, 'RIGHT', -6, 0)
+  colorHeaderIcon:SetSize(16, 16)
+  colorHeaderIcon:SetTexture('Interface\\Buttons\\UI-MinusButton-Up')
+
+  -- Dynamic Layout & Search Storage
+  -- uiSettingsRows stores all frames (headers and content rows) for the UI Settings section.
+  -- We iterate this list to filter visibility and dynamically stack them.
+  local uiSettingsRows = {}
+  local function addUIRow(frame, searchTags, parentHeaderFrame)
+    -- Tag the frame with search terms (concatenated string)
+    frame._uhcSearch = string.lower(searchTags or '')
+    -- Link to parent header so we can force-show the header if a child matches
+    frame._uhcParentHeader = parentHeaderFrame
+    table.insert(uiSettingsRows, frame)
+  end
+  local function addUIHeader(frame)
+    frame._isHeader = true
+    table.insert(uiSettingsRows, frame)
+  end
+
+  tempSettings.resourceBarColors = tempSettings.resourceBarColors or {}
+
+  -- Helper function to apply resource bar colors instantly
+  local function ApplyResourceBarColorsInstantly()
+    -- Update GLOBAL_SETTINGS immediately so colors are applied
+    if not GLOBAL_SETTINGS.resourceBarColors then
+      GLOBAL_SETTINGS.resourceBarColors = {}
+    end
+    for key, value in pairs(tempSettings.resourceBarColors) do
+      GLOBAL_SETTINGS.resourceBarColors[key] = value
+    end
+    -- Remove keys that are nil in tempSettings
+    for key, _ in pairs(GLOBAL_SETTINGS.resourceBarColors) do
+      if tempSettings.resourceBarColors[key] == nil then
+        GLOBAL_SETTINGS.resourceBarColors[key] = nil
+      end
+    end
+
+    -- Update resource bars immediately
+    local resourceBar = _G['UltraHardcoreResourceBar']
+    if resourceBar and resourceBar:IsShown() then
+      local powerType = GetCurrentResourceType()
+      if powerType then
+        local r, g, b = GetPowerTypeColor(powerType)
+        resourceBar:SetStatusBarColor(r, g, b)
+      end
+    end
+
+    -- Update pet resource bar
+    local petBar = _G['UltraHardcorePetResourceBar']
+    if petBar and petBar:IsShown() then
+      local pr, pg, pb = 0.5, 0, 1
+      if GLOBAL_SETTINGS.resourceBarColors and GLOBAL_SETTINGS.resourceBarColors.PET then
+        local c = GLOBAL_SETTINGS.resourceBarColors.PET
+        if type(c) == 'table' and #c >= 3 then
+          pr, pg, pb = c[1], c[2], c[3]
+        end
+      end
+      petBar:SetStatusBarColor(pr, pg, pb)
+    end
+
+    -- Update druid form resource bar
+    local druidBar = _G['UltraHardcoreDruidFormResourceBar']
+    if druidBar and druidBar:IsShown() then
+      local r, g, b = GetPowerTypeColor('MANA')
+      druidBar:SetStatusBarColor(r, g, b)
+    end
+
+    -- Update XP bar color if it exists
+    if _G.UHC_XPBar and _G.UHC_XPBar.SetBarColor then
+      _G.UHC_XPBar:SetBarColor()
+    end
+  end
+
+  local lockResourceBarCheckbox =
+    CreateFrame('CheckButton', nil, colorSectionFrame, 'ChatConfigCheckButtonTemplate')
+  -- Position will be handled by reflow
+  lockResourceBarCheckbox:SetPoint(
+    'TOPLEFT',
+    colorSectionFrame,
+    'TOPLEFT',
+    10,
+    -(HEADER_HEIGHT + HEADER_CONTENT_GAP)
+  )
+  lockResourceBarCheckbox.Text:SetText('Lock Resource Bar Position')
+  lockResourceBarCheckbox.Text:SetPoint('LEFT', lockResourceBarCheckbox, 'RIGHT', 5, 0)
+  lockResourceBarCheckbox:SetChecked(tempSettings.lockResourceBar)
+  lockResourceBarCheckbox:SetScript('OnClick', function(self)
+    tempSettings.lockResourceBar = self:GetChecked()
+    if _G.UltraHardcoreApplyResourceBarLockState then
+      UltraHardcoreApplyResourceBarLockState(tempSettings.lockResourceBar)
+    end
+  end)
+  lockResourceBarCheckbox:SetScript('OnEnter', function(self)
+    GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+    GameTooltip:SetText('Prevent dragging the custom resource bar')
+    GameTooltip:Show()
+  end)
+  lockResourceBarCheckbox:SetScript('OnLeave', function()
+    GameTooltip:Hide()
+  end)
+  addUIRow(lockResourceBarCheckbox, 'lock resource bar position custom move', nil)
+
+  -- Subheader: Resource Bar Colours
+  local resourceSubHeader = colorSectionFrame:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+  -- Position will be handled by reflow
+  resourceSubHeader:SetPoint(
+    'TOPLEFT',
+    colorSectionFrame,
+    'TOPLEFT',
+    6,
+    -(HEADER_HEIGHT + HEADER_CONTENT_GAP + LOCK_ROW_HEIGHT + LOCK_ROW_GAP)
+  )
+  resourceSubHeader:SetText('Resource Bar Colours')
+  resourceSubHeader:SetTextColor(0.922, 0.871, 0.761)
+  addUIHeader(resourceSubHeader)
+
+  local activePowerKey = nil -- current row being edited
+  local activeSetSwatchColor = nil -- current row’s setter
+  local activeOriginalColor = nil -- previousValues backup
+  local function createColorRowInSection(labelText, powerKey, rowIndex, fallbackColor)
+    local row = CreateFrame('Frame', nil, colorSectionFrame)
+    row:SetSize(LAYOUT.ROW_WIDTH, LAYOUT.COLOR_ROW_HEIGHT)
+    row:SetPoint(
+      'TOPLEFT',
+      colorSectionFrame,
+      'TOPLEFT',
+      20,
+      -100 - (rowIndex - 1) * LAYOUT.COLOR_ROW_HEIGHT
+    )
+
+    local LABEL_WIDTH = LAYOUT.LABEL_WIDTH
+    local SWATCH_WIDTH = 60
+    local SWATCH_HEIGHT = 16
+    local GAP = 12
+
+    -- Label
+    local label = row:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+    label:SetPoint('LEFT', row, 'LEFT', 0, 0)
+    label:SetWidth(LABEL_WIDTH)
+    label:SetJustifyH('LEFT')
+    label:SetText(labelText)
+
+    -- Swatch Button
+    local swatch = CreateFrame('Button', nil, row, 'BackdropTemplate')
+    swatch:SetSize(SWATCH_WIDTH, SWATCH_HEIGHT)
+    swatch:SetPoint('LEFT', label, 'RIGHT', GAP, 0)
+    swatch:SetBackdrop({
+      bgFile = 'Interface\\Buttons\\WHITE8X8',
+      edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border',
+      edgeSize = 8,
+      insets = {
+        left = 1,
+        right = 1,
+        top = 1,
+        bottom = 1,
+      },
+    })
+
+    -- Highlight border
+    local hl = swatch:CreateTexture(nil, 'HIGHLIGHT')
+    hl:SetAllPoints(swatch)
+    hl:SetColorTexture(1, 1, 1, 0.25)
+    swatch:SetHighlightTexture(hl)
+
+    -- Helper functions
+    local function getDefaultColor()
+      if POWER_COLORS and POWER_COLORS[powerKey] then
+        return POWER_COLORS[powerKey][1], POWER_COLORS[powerKey][2], POWER_COLORS[powerKey][3]
+      end
+      if fallbackColor then
+        return fallbackColor[1], fallbackColor[2], fallbackColor[3]
+      end
+      return 1, 1, 1
+    end
+
+    local function getCurrentColor()
+      local c = nil
+      if tempSettings.resourceBarColors[powerKey] then
+        c = tempSettings.resourceBarColors[powerKey]
+      elseif POWER_COLORS and POWER_COLORS[powerKey] then
+        c = POWER_COLORS[powerKey]
+      else
+        c = fallbackColor
+      end
+      return c[1], c[2], c[3]
+    end
+
+    local function setSwatchColor(r, g, b)
+      swatch:SetBackdropColor(r, g, b, 1)
+      swatch:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    end
+
+    setSwatchColor(getCurrentColor())
+
+    -- INITIALIZE COLOR PICKER INPUTS ONLY ONCE
+    if not ColorPickerFrame.__UHC_InputsCreated then
+      local inputs = CreateFrame('Frame', nil, ColorPickerFrame)
+      inputs:SetSize(240, 44)
+      inputs:SetPoint('BOTTOM', ColorPickerFrame, 'BOTTOM', 0, 20)
+
+      -- Expand the picker once
+      ColorPickerFrame:SetHeight(ColorPickerFrame:GetHeight() + 50)
+
+      -- RGB inputs
+      inputs.rgb = {}
+      local labels = { 'R: ', 'G: ', 'B: ' }
+      for i = 1, 3 do
+        local lbl = inputs:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+        lbl:SetPoint('TOPLEFT', inputs, 'TOPLEFT', -15 + ((i - 1) * 55), -4)
+        lbl:SetText(labels[i])
+
+        local box = CreateFrame('EditBox', nil, inputs, 'InputBoxTemplate')
+        box:SetSize(30, 20)
+        box:SetPoint('TOPLEFT', lbl, 'TOPRIGHT', 4, 4)
+        box:SetAutoFocus(false)
+        box:SetMaxLetters(3)
+        box:SetNumeric(true)
+        box:SetMaxLetters(3)
+
+        inputs.rgb[i] = box
+      end
+
+      -- Hex input
+      local hexLbl = inputs:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+      hexLbl:SetPoint('TOPLEFT', inputs, 'TOPLEFT', 160, -4)
+      hexLbl:SetText('Hex: ')
+
+      local hexBox = CreateFrame('EditBox', nil, inputs, 'InputBoxTemplate')
+      hexBox:SetSize(56, 20)
+      hexBox:SetPoint('LEFT', hexLbl, 'RIGHT', 4, 0)
+      hexBox:SetAutoFocus(false)
+      hexBox:SetMaxLetters(6)
+      inputs.hex = hexBox
+
+      ColorPickerFrame.__UHC_Inputs = inputs
+      ColorPickerFrame.__UHC_InputsCreated = true
+
+      -- ColorPicker Update UI
+      local function updateInputs()
+        if not activePowerKey then return end
+
+        local r, g, b = ColorPickerFrame:GetColorRGB()
+
+        tempSettings.resourceBarColors[activePowerKey] = { r, g, b }
+        activeSetSwatchColor(r, g, b)
+
+        -- Apply color instantly
+        ApplyResourceBarColorsInstantly()
+
+        -- Update RGB boxes
+        for i, box in ipairs(inputs.rgb) do
+          local val = math.floor((i == 1 and r or i == 2 and g or b) * 255 + 0.5)
+          box:SetText(val)
+        end
+
+        -- Update Hex
+        inputs.hex:SetText(
+          string.format(
+            '%02X%02X%02X',
+            math.floor(r * 255 + 0.5),
+            math.floor(g * 255 + 0.5),
+            math.floor(b * 255 + 0.5)
+          )
+        )
+      end
+
+      ColorPickerFrame.__UHC_UpdateInputs = updateInputs
+
+      -- RGB EditBoxes Update picker
+      for i = 1, 3 do
+        inputs.rgb[i]:SetScript('OnTextChanged', function(self, user)
+          if not user or not activePowerKey then return end
+
+          local r = tonumber(inputs.rgb[1]:GetText()) or 0
+          local g = tonumber(inputs.rgb[2]:GetText()) or 0
+          local b = tonumber(inputs.rgb[3]:GetText()) or 0
+
+          r = math.min(255, math.max(0, r))
+          g = math.min(255, math.max(0, g))
+          b = math.min(255, math.max(0, b))
+
+          ColorPickerFrame:SetColorRGB(r / 255, g / 255, b / 255)
+        end)
+      end
+
+      -- Hex -> Update picker
+      inputs.hex:SetScript('OnTextChanged', function(self, user)
+        if not user or not activePowerKey then return end
+
+        local hex = self:GetText():gsub('#', ''):upper()
+        if #hex ~= 6 or not hex:match('^%x%x%x%x%x%x$') then return end
+
+        local r = tonumber(hex:sub(1, 2), 16) / 255
+        local g = tonumber(hex:sub(3, 4), 16) / 255
+        local b = tonumber(hex:sub(5, 6), 16) / 255
+
+        ColorPickerFrame:SetColorRGB(r, g, b)
+      end)
+    end
+
+    -- SWATCH CLICK -> OPEN COLOR PICKER FOR THIS ROW
+    swatch:SetScript('OnClick', function()
+      -- Set active row context
+      activePowerKey = powerKey
+      activeSetSwatchColor = setSwatchColor
+
+      local r, g, b = getCurrentColor()
+      activeOriginalColor = {
+        r = r,
+        g = g,
+        b = b,
+      }
+
+      local updateInputs = ColorPickerFrame.__UHC_UpdateInputs
+
+      ColorPickerFrame.hasOpacity = false
+      ColorPickerFrame.previousValues = activeOriginalColor
+      ColorPickerFrame.func = updateInputs
+      ColorPickerFrame.swatchFunc = updateInputs
+      ColorPickerFrame.cancelFunc = function(prev)
+        prev = prev or activeOriginalColor
+        tempSettings.resourceBarColors[powerKey] = { prev.r, prev.g, prev.b }
+        setSwatchColor(prev.r, prev.g, prev.b)
+        -- Revert color instantly
+        ApplyResourceBarColorsInstantly()
+      end
+
+      ColorPickerFrame:SetColorRGB(r, g, b)
+      updateInputs()
+      ColorPickerFrame:Show()
+    end)
+
+    -- CLASS BUTTON
+    local classButton = CreateFrame('Button', nil, row, 'UIPanelButtonTemplate')
+    classButton:SetSize(96, 20)
+    classButton:SetPoint('LEFT', swatch, 'RIGHT', GAP, 0)
+    classButton:SetText('Class Colour')
+    classButton:SetScript('OnClick', function()
+      local _, class = UnitClass('player')
+      local c = RAID_CLASS_COLORS[class]
+      if c then
+        tempSettings.resourceBarColors[powerKey] = { c.r, c.g, c.b }
+        setSwatchColor(c.r, c.g, c.b)
+        -- Apply color instantly
+        ApplyResourceBarColorsInstantly()
+      end
+    end)
+
+    -- RESET BUTTON
+    local resetButton = CreateFrame('Button', nil, row, 'UIPanelButtonTemplate')
+    resetButton:SetSize(56, 20)
+    resetButton:SetPoint('LEFT', classButton, 'RIGHT', GAP, 0)
+    resetButton:SetText('Reset')
+    resetButton:SetScript('OnClick', function()
+      tempSettings.resourceBarColors[powerKey] = nil
+      setSwatchColor(getDefaultColor())
+      -- Apply reset instantly
+      ApplyResourceBarColorsInstantly()
+    end)
+
+    addUIRow(row, labelText .. ' color resource bar', resourceSubHeader)
+  end
+
+  createColorRowInSection('Energy', 'ENERGY', 1)
+  createColorRowInSection('Rage', 'RAGE', 2)
+  createColorRowInSection('Mana', 'MANA', 3)
+  createColorRowInSection('Pet', 'PET', 4, { 0.5, 0, 1 })
+  createColorRowInSection('XP Bar', 'EXPBAR', 5, { 0.0, 0.4, 1.0 })
+
+  -- Subheaders and additional fields consolidated under this single collapsible section
+  local SUBHEADER_GAP = 12
+  local SUBHEADER_FONT = 'GameFontNormal'
+
+  -- Statistics Background subheader
+  local statsSubHeader = colorSectionFrame:CreateFontString(nil, 'OVERLAY', SUBHEADER_FONT)
+  -- Position will be handled by reflow
+  statsSubHeader:SetPoint(
+    'TOPLEFT',
+    colorSectionFrame,
+    'TOPLEFT',
+    6,
+    -200 -- Temporary
+  )
+  statsSubHeader:SetText('Statistics Background')
+  statsSubHeader:SetTextColor(0.922, 0.871, 0.761)
+  addUIHeader(statsSubHeader)
+
+  local opacityRow = CreateFrame('Frame', nil, colorSectionFrame)
+  opacityRow:SetSize(LAYOUT.ROW_WIDTH, LAYOUT.COLOR_ROW_HEIGHT) -- Increased width to match new layout
+  -- Position will be handled by reflow
+  opacityRow:SetPoint('TOPLEFT', statsSubHeader, 'BOTTOMLEFT', 14, -6)
+
+  local LABEL_WIDTH = LAYOUT.LABEL_WIDTH
+  local GAP = 12
+
+  local opacityLabel = opacityRow:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+  opacityLabel:SetPoint('LEFT', opacityRow, 'LEFT', 0, 0)
+  opacityLabel:SetWidth(LABEL_WIDTH)
+  opacityLabel:SetJustifyH('LEFT')
+  opacityLabel:SetText('Opacity')
+
+  if tempSettings.statisticsBackgroundOpacity == nil then
+    tempSettings.statisticsBackgroundOpacity = GLOBAL_SETTINGS.statisticsBackgroundOpacity or 0.3
+  end
+
+  local percentText = opacityRow:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+  percentText:SetPoint('LEFT', opacityRow, 'LEFT', LABEL_WIDTH + GAP, 0)
+  percentText:SetWidth(40)
+  percentText:SetJustifyH('LEFT')
+  percentText:SetText(
+    tostring(math.floor((tempSettings.statisticsBackgroundOpacity or 0.3) * 100)) .. '%'
+  )
+
+  local slider = CreateFrame('Slider', nil, opacityRow, 'OptionsSliderTemplate')
+  slider:SetPoint('LEFT', percentText, 'RIGHT', 10, 0)
+  slider:SetSize(180, 16)
+  slider:SetMinMaxValues(0, 100)
+  slider:SetValueStep(1)
+  slider:SetObeyStepOnDrag(true)
+  slider:SetValue((tempSettings.statisticsBackgroundOpacity or 0.3) * 100)
+  if slider.Low then
+    slider.Low:SetText('0%')
+  end
+  if slider.High then
+    slider.High:SetText('100%')
+  end
+  if slider.Text then
+    slider.Text:SetText('')
+  end
+
+  slider:SetScript('OnValueChanged', function(self, val)
+    local pct = math.floor(val + 0.5)
+    percentText:SetText(pct .. '%')
+    tempSettings.statisticsBackgroundOpacity = pct / 100
+    -- Apply opacity instantly
+    GLOBAL_SETTINGS.statisticsBackgroundOpacity = tempSettings.statisticsBackgroundOpacity
+    if _G.ApplyStatsBackgroundOpacity then
+      _G.ApplyStatsBackgroundOpacity()
+    end
+  end)
+
+  addUIRow(opacityRow, 'statistics background opacity transparency', statsSubHeader)
+
+  -- Border opacity row
+  local borderOpacityRow = CreateFrame('Frame', nil, colorSectionFrame)
+  borderOpacityRow:SetSize(LAYOUT.ROW_WIDTH, LAYOUT.COLOR_ROW_HEIGHT)
+  -- Position will be handled by reflow
+  borderOpacityRow:SetPoint('TOPLEFT', opacityRow, 'BOTTOMLEFT', 0, -6)
+
+  local borderOpacityLabel = borderOpacityRow:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+  borderOpacityLabel:SetPoint('LEFT', borderOpacityRow, 'LEFT', 0, 0)
+  borderOpacityLabel:SetWidth(LABEL_WIDTH)
+  borderOpacityLabel:SetJustifyH('LEFT')
+  borderOpacityLabel:SetText('Border Opacity')
+
+  if tempSettings.statisticsBorderOpacity == nil then
+    tempSettings.statisticsBorderOpacity = GLOBAL_SETTINGS.statisticsBorderOpacity or 0.9
+  end
+
+  local borderPercentText = borderOpacityRow:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+  borderPercentText:SetPoint('LEFT', borderOpacityRow, 'LEFT', LABEL_WIDTH + GAP, 0)
+  borderPercentText:SetWidth(40)
+  borderPercentText:SetJustifyH('LEFT')
+  borderPercentText:SetText(
+    tostring(math.floor((tempSettings.statisticsBorderOpacity or 0.9) * 100)) .. '%'
+  )
+
+  local borderSlider = CreateFrame('Slider', nil, borderOpacityRow, 'OptionsSliderTemplate')
+  borderSlider:SetPoint('LEFT', borderPercentText, 'RIGHT', 10, 0)
+  borderSlider:SetSize(180, 16)
+  borderSlider:SetMinMaxValues(0, 100)
+  borderSlider:SetValueStep(1)
+  borderSlider:SetObeyStepOnDrag(true)
+  borderSlider:SetValue((tempSettings.statisticsBorderOpacity or 0.9) * 100)
+  if borderSlider.Low then
+    borderSlider.Low:SetText('0%')
+  end
+  if borderSlider.High then
+    borderSlider.High:SetText('100%')
+  end
+  if borderSlider.Text then
+    borderSlider.Text:SetText('')
+  end
+
+  borderSlider:SetScript('OnValueChanged', function(self, val)
+    local pct = math.floor(val + 0.5)
+    borderPercentText:SetText(pct .. '%')
+    tempSettings.statisticsBorderOpacity = pct / 100
+    -- Apply opacity instantly
+    GLOBAL_SETTINGS.statisticsBorderOpacity = tempSettings.statisticsBorderOpacity
+    if _G.ApplyStatsBackgroundOpacity then
+      _G.ApplyStatsBackgroundOpacity()
+    end
+  end)
+
+  addUIRow(borderOpacityRow, 'statistics border opacity transparency', statsSubHeader)
+
+  -- Scale subheader
+  local scaleSubHeader = colorSectionFrame:CreateFontString(nil, 'OVERLAY', SUBHEADER_FONT)
+  -- Position will be handled by reflow
+  scaleSubHeader:SetPoint('TOPLEFT', opacityRow, 'BOTTOMLEFT', -14, -12)
+  scaleSubHeader:SetText('Scaling')
+  scaleSubHeader:SetTextColor(0.922, 0.871, 0.761)
+  addUIHeader(scaleSubHeader)
+
+  local minimapClockScaleRow = CreateFrame('Frame', nil, colorSectionFrame)
+  minimapClockScaleRow:SetSize(LAYOUT.ROW_WIDTH, LAYOUT.COLOR_ROW_HEIGHT) -- Increased width to match new layout
+  -- Position will be handled by reflow
+  minimapClockScaleRow:SetPoint('TOPLEFT', scaleSubHeader, 'BOTTOMLEFT', 14, -6)
+
+  local LABEL_WIDTH2 = LAYOUT.LABEL_WIDTH
+  local GAP2 = 12
+
+  local minimapClockScaleLabel =
+    minimapClockScaleRow:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+  minimapClockScaleLabel:SetPoint('LEFT', minimapClockScaleRow, 'LEFT', 0, 0)
+  minimapClockScaleLabel:SetWidth(LABEL_WIDTH2)
+  minimapClockScaleLabel:SetJustifyH('LEFT')
+  minimapClockScaleLabel:SetText('Clock Scale')
+
+  if tempSettings.minimapClockScale == nil then
+    tempSettings.minimapClockScale = GLOBAL_SETTINGS.minimapClockScale or 1.0
+  end
+
+  local minimapClockScalePercentText =
+    minimapClockScaleRow:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+  minimapClockScalePercentText:SetPoint(
+    'LEFT',
+    minimapClockScaleRow,
+    'LEFT',
+    LABEL_WIDTH2 + GAP2,
+    0
+  )
+  minimapClockScalePercentText:SetWidth(40)
+  minimapClockScalePercentText:SetJustifyH('LEFT')
+  minimapClockScalePercentText:SetText(
+    tostring(math.floor((tempSettings.minimapClockScale or 1.0) * 100)) .. '%'
+  )
+
+  local minimapClockScaleSlider =
+    CreateFrame('Slider', nil, minimapClockScaleRow, 'OptionsSliderTemplate')
+  minimapClockScaleSlider:SetPoint('LEFT', minimapClockScalePercentText, 'RIGHT', 10, 0)
+  minimapClockScaleSlider:SetSize(180, 16)
+  minimapClockScaleSlider:SetMinMaxValues(10, 20)
+  minimapClockScaleSlider:SetValueStep(1)
+  minimapClockScaleSlider:SetObeyStepOnDrag(true)
+  minimapClockScaleSlider:SetValue(math.floor(((tempSettings.minimapClockScale or 1.0) * 10) + 0.5))
+  if minimapClockScaleSlider.Low then
+    minimapClockScaleSlider.Low:SetText('100%')
+  end
+  if minimapClockScaleSlider.High then
+    minimapClockScaleSlider.High:SetText('200%')
+  end
+  if minimapClockScaleSlider.Text then
+    minimapClockScaleSlider.Text:SetText('')
+  end
+
+  minimapClockScaleSlider:SetScript('OnValueChanged', function(self, val)
+    local steps = math.floor(val + 0.5)
+    minimapClockScalePercentText:SetText((steps * 10) .. '%')
+    tempSettings.minimapClockScale = steps / 10
+    -- Apply scale instantly
+    GLOBAL_SETTINGS.minimapClockScale = tempSettings.minimapClockScale
+    if TimeManagerClockButton then
+      TimeManagerClockButton:SetScale(GLOBAL_SETTINGS.minimapClockScale)
+    end
+  end)
+  addUIRow(minimapClockScaleRow, 'minimap clock scale size', scaleSubHeader)
+
+  local minimapMailScaleRow = CreateFrame('Frame', nil, colorSectionFrame)
+  minimapMailScaleRow:SetSize(LAYOUT.ROW_WIDTH, LAYOUT.COLOR_ROW_HEIGHT) -- Increased width to match new layout
+  -- Position will be handled by reflow
+  minimapMailScaleRow:SetPoint('TOPLEFT', minimapClockScaleRow, 'BOTTOMLEFT', 0, -6)
+
+  local minimapMailScaleLabel =
+    minimapMailScaleRow:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+  minimapMailScaleLabel:SetPoint('LEFT', minimapMailScaleRow, 'LEFT', 0, 0)
+  minimapMailScaleLabel:SetWidth(LABEL_WIDTH2)
+  minimapMailScaleLabel:SetJustifyH('LEFT')
+  minimapMailScaleLabel:SetText('Mail Indicator Scale')
+
+  if tempSettings.minimapMailScale == nil then
+    tempSettings.minimapMailScale = GLOBAL_SETTINGS.minimapMailScale or 1.0
+  end
+
+  local minimapMailScalePercentText =
+    minimapMailScaleRow:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+  minimapMailScalePercentText:SetPoint('LEFT', minimapMailScaleRow, 'LEFT', LABEL_WIDTH2 + GAP2, 0)
+  minimapMailScalePercentText:SetWidth(40)
+  minimapMailScalePercentText:SetJustifyH('LEFT')
+  minimapMailScalePercentText:SetText(
+    tostring(math.floor((tempSettings.minimapMailScale or 1.0) * 100)) .. '%'
+  )
+
+  local minimapMailScaleSlider =
+    CreateFrame('Slider', nil, minimapMailScaleRow, 'OptionsSliderTemplate')
+  minimapMailScaleSlider:SetPoint('LEFT', minimapMailScalePercentText, 'RIGHT', 10, 0)
+  minimapMailScaleSlider:SetSize(180, 16)
+  minimapMailScaleSlider:SetMinMaxValues(10, 20)
+  minimapMailScaleSlider:SetValueStep(1)
+  minimapMailScaleSlider:SetObeyStepOnDrag(true)
+  minimapMailScaleSlider:SetValue(math.floor(((tempSettings.minimapMailScale or 1.0) * 10) + 0.5))
+  if minimapMailScaleSlider.Low then
+    minimapMailScaleSlider.Low:SetText('100%')
+  end
+  if minimapMailScaleSlider.High then
+    minimapMailScaleSlider.High:SetText('200%')
+  end
+  if minimapMailScaleSlider.Text then
+    minimapMailScaleSlider.Text:SetText('')
+  end
+
+  minimapMailScaleSlider:SetScript('OnValueChanged', function(self, val)
+    local steps = math.floor(val + 0.5)
+    minimapMailScalePercentText:SetText((steps * 10) .. '%')
+    tempSettings.minimapMailScale = steps / 10
+    -- Apply scale instantly
+    GLOBAL_SETTINGS.minimapMailScale = tempSettings.minimapMailScale
+    if MiniMapMailFrame then
+      MiniMapMailFrame:SetScale(GLOBAL_SETTINGS.minimapMailScale)
+    end
+  end)
+  addUIRow(minimapMailScaleRow, 'minimap mail scale size', scaleSubHeader)
+
+  local minimapTrackingScaleRow = CreateFrame('Frame', nil, colorSectionFrame)
+  minimapTrackingScaleRow:SetSize(LAYOUT.ROW_WIDTH, LAYOUT.COLOR_ROW_HEIGHT)
+  -- Position will be handled by reflow
+  minimapTrackingScaleRow:SetPoint('TOPLEFT', minimapMailScaleRow, 'BOTTOMLEFT', 0, -6)
+
+  local minimapTrackingScaleLabel =
+    minimapTrackingScaleRow:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+  minimapTrackingScaleLabel:SetPoint('LEFT', minimapTrackingScaleRow, 'LEFT', 0, 0)
+  minimapTrackingScaleLabel:SetWidth(LABEL_WIDTH2)
+  minimapTrackingScaleLabel:SetJustifyH('LEFT')
+  minimapTrackingScaleLabel:SetText('Tracking Icon Scale')
+
+  if tempSettings.minimapTrackingScale == nil then
+    tempSettings.minimapTrackingScale = GLOBAL_SETTINGS.minimapTrackingScale or 0.9
+  end
+
+  local minimapTrackingScalePercentText =
+    minimapTrackingScaleRow:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+  minimapTrackingScalePercentText:SetPoint(
+    'LEFT',
+    minimapTrackingScaleRow,
+    'LEFT',
+    LABEL_WIDTH2 + GAP2,
+    0
+  )
+  minimapTrackingScalePercentText:SetWidth(40)
+  minimapTrackingScalePercentText:SetJustifyH('LEFT')
+  minimapTrackingScalePercentText:SetText(
+    tostring(math.floor((tempSettings.minimapTrackingScale or 0.9) * 100)) .. '%'
+  )
+
+  local minimapTrackingScaleSlider =
+    CreateFrame('Slider', nil, minimapTrackingScaleRow, 'OptionsSliderTemplate')
+  minimapTrackingScaleSlider:SetPoint('LEFT', minimapTrackingScalePercentText, 'RIGHT', 10, 0)
+  minimapTrackingScaleSlider:SetSize(180, 16)
+  minimapTrackingScaleSlider:SetMinMaxValues(9, 20)
+  minimapTrackingScaleSlider:SetValueStep(1)
+  minimapTrackingScaleSlider:SetObeyStepOnDrag(true)
+  minimapTrackingScaleSlider:SetValue(
+    math.floor(((tempSettings.minimapTrackingScale or 0.9) * 10) + 0.5)
+  )
+  if minimapTrackingScaleSlider.Low then
+    minimapTrackingScaleSlider.Low:SetText('90%')
+  end
+  if minimapTrackingScaleSlider.High then
+    minimapTrackingScaleSlider.High:SetText('200%')
+  end
+  if minimapTrackingScaleSlider.Text then
+    minimapTrackingScaleSlider.Text:SetText('')
+  end
+
+  minimapTrackingScaleSlider:SetScript('OnValueChanged', function(self, val)
+    local steps = math.floor(val + 0.5)
+    minimapTrackingScalePercentText:SetText((steps * 10) .. '%')
+    tempSettings.minimapTrackingScale = steps / 10
+    -- Apply scale instantly
+    GLOBAL_SETTINGS.minimapTrackingScale = tempSettings.minimapTrackingScale
+    if MiniMapTracking then
+      MiniMapTracking:SetScale(GLOBAL_SETTINGS.minimapTrackingScale)
+    end
+  end)
+  addUIRow(minimapTrackingScaleRow, 'minimap tracking scale size', scaleSubHeader)
+
+  -- Dynamic Reflow Function
+  -- Stacks visible UI elements vertically. When searching, headers only appear if their children match.
+  local function reflowUISettings(filterQuery)
+    local query = string.lower(filterQuery or '')
+    local isSearch = (query ~= '')
+
+    -- Reset header visibility tracking
+    for _, item in ipairs(uiSettingsRows) do
+      if item._isHeader then
+        item._forceShow = false
+      end
+    end
+
+    -- Determine visibility of content rows based on search query
+    local visibleItems = {}
+    for _, item in ipairs(uiSettingsRows) do
+      if not item._isHeader then
+        local matches = IsSearchMatch(item._uhcSearch, query)
+        if matches then
+          table.insert(visibleItems, item)
+          -- Bubble Up Visibility: If a child row matches, force show its parent header
+          if item._uhcParentHeader then
+            item._uhcParentHeader._forceShow = true
+          end
+        else
+          item:Hide()
+        end
+      end
+    end
+
+    -- Construct the final list of items to display (headers + visible rows)
+    local finalLayoutList = {}
+    if not isSearch then
+      -- In default mode (no search), show everything in original order
+      for _, item in ipairs(uiSettingsRows) do
+        table.insert(finalLayoutList, item)
+      end
+    else
+      -- In search mode, we reconstruct the list to ensure headers appear before their children
+      for _, item in ipairs(uiSettingsRows) do
+        if item._isHeader then
+          if item._forceShow then
+            table.insert(finalLayoutList, item)
+          else
+            item:Hide()
+          end
+        else
+          -- Check if this row was deemed visible
+          local isVisible = false
+          for _, v in ipairs(visibleItems) do
+            if v == item then
+              isVisible = true
+              break
+            end
+          end
+          if isVisible then
+            table.insert(finalLayoutList, item)
+          end
+        end
+      end
+    end
+
+    -- Apply Layout: Stack items vertically
+    local currentY = -(LAYOUT.HEADER_HEIGHT + LAYOUT.HEADER_CONTENT_GAP)
+    for _, item in ipairs(finalLayoutList) do
+      item:Show()
+
+      local targetY = currentY
+      local targetX = 10 -- Default indentation
+      if item._isHeader then
+        if currentY < -(LAYOUT.HEADER_HEIGHT + LAYOUT.HEADER_CONTENT_GAP) then
+          targetY = targetY - 10 -- Gap before header
+        end
+        targetX = 6 -- Header indentation
+        currentY = targetY - 20 -- Header height (approx)
+      else
+        currentY = targetY - LAYOUT.ROW_HEIGHT
+      end
+
+      -- Optimization: Only ClearAllPoints/SetPoint if the position has actually changed.
+      -- This reduces layout engine thrashing during typing.
+      if item._lastY ~= targetY or item._lastX ~= targetX then
+        item:ClearAllPoints()
+        item:SetPoint('TOPLEFT', colorSectionFrame, 'TOPLEFT', targetX, targetY)
+        item._lastY = targetY
+        item._lastX = targetX
+      end
+    end
+
+    return math.abs(currentY) + 10
+  end
+
+  -- Expose for global search
+  _G.__UHC_ReflowUISettings = reflowUISettings
+
+  -- Initial height calculation
+  local colorExpandedHeight = reflowUISettings('')
+  local colorCollapsedHeight = LAYOUT.HEADER_HEIGHT
+  -- Initial collapsed state (default collapsed) using unified key
+  local colorCollapsed = GLOBAL_SETTINGS.collapsedSettingsSections.uiColour
+  if colorCollapsed == nil then
+    colorCollapsed = GLOBAL_SETTINGS.collapsedSettingsSections.resourceBarColors
+    if colorCollapsed == nil then
+      colorCollapsed = true
+    end
+  end
+
+  -- Add reset button at the bottom of UI settings section
+  local resetUIButton = CreateFrame('Button', nil, colorSectionFrame, 'UIPanelButtonTemplate')
+  resetUIButton:SetSize(140, 30)
+  resetUIButton:SetText('Reset Positions')
+  resetUIButton:SetPoint('BOTTOM', colorSectionFrame, 'BOTTOM', 0, 10)
+  resetUIButton:SetScript('OnClick', function()
+    if ShowConfirmationDialog then
+      ShowConfirmationDialog(
+        'Reset UI Positions',
+        'Are you sure you want to reset all UI element positions to their defaults?',
+        function()
+          if SlashCmdList['RESETUI'] then
+            SlashCmdList['RESETUI']()
+          end
+        end,
+        nil,
+        'Reset',
+        'Cancel'
+      )
+    else
+      -- Fallback if confirmation dialog isn't loaded
+      if SlashCmdList['RESETUI'] then
+        SlashCmdList['RESETUI']()
+      end
+    end
+  end)
+  resetUIButton:SetScript('OnEnter', function(self)
+    GameTooltip:SetOwner(self, 'ANCHOR_TOP')
+    GameTooltip:SetText('Reset Positions', 1, 1, 1)
+    GameTooltip:AddLine('Resets the following to default positions:', 1, 1, 1, true)
+    GameTooltip:AddLine('• Clock', 0.8, 0.8, 0.8)
+    GameTooltip:AddLine('• Mail Icon', 0.8, 0.8, 0.8)
+    GameTooltip:AddLine('• Tracking Icon', 0.8, 0.8, 0.8)
+    GameTooltip:AddLine('• Resource Bar', 0.8, 0.8, 0.8)
+    GameTooltip:AddLine('• Resource Indicator', 0.8, 0.8, 0.8)
+    GameTooltip:AddLine('• Soulshard Indicator', 0.8, 0.8, 0.8)
+    GameTooltip:AddLine('• Statistics Panel', 0.8, 0.8, 0.8)
+    GameTooltip:AddLine('• ULTRA Menu', 0.8, 0.8, 0.8)
+    GameTooltip:AddLine(' ')
+    GameTooltip:AddLine('Note: This does not reset scale settings.', 1, 0.5, 0.5)
+    GameTooltip:Show()
+  end)
+  resetUIButton:SetScript('OnLeave', function()
+    GameTooltip:Hide()
+  end)
+
+  local function toggleUICollapsing(forceCollapse)
+    if forceCollapse ~= nil then
+      colorCollapsed = forceCollapse
+    end
+
+    if colorCollapsed then
+      -- Hide all children
+      for _, item in ipairs(uiSettingsRows) do
+        item:Hide()
+      end
+      resetUIButton:Hide()
+      colorHeaderIcon:SetTexture('Interface\\Buttons\\UI-PlusButton-Up')
+      colorSectionFrame:SetHeight(LAYOUT.HEADER_HEIGHT)
+    else
+      -- Reflow will show correct children
+      local h = reflowUISettings(_G.__UHC_CurrentSearchQuery)
+      resetUIButton:Show()
+      colorHeaderIcon:SetTexture('Interface\\Buttons\\UI-MinusButton-Up')
+      colorSectionFrame:SetHeight(h + 50) -- Add space for button
+    end
+  end
+
+  _G.__UHC_ToggleUISettingsCollapse = function(val)
+    toggleUICollapsing(val)
+  end
+
+  -- Set initial button visibility based on collapsed state
+  if colorCollapsed then
+    resetUIButton:Hide()
+  else
+    resetUIButton:Show()
+  end
+
+  toggleUICollapsing(colorCollapsed)
+
+  colorHeaderButton:SetScript('OnClick', function()
+    colorCollapsed = not colorCollapsed
+    toggleUICollapsing()
+
+    GLOBAL_SETTINGS.collapsedSettingsSections.uiColour = colorCollapsed
+    if UHC_SaveCharacterSettings then
+      UHC_SaveCharacterSettings(GLOBAL_SETTINGS)
+    end
+    if recalcContentHeight then
+      recalcContentHeight()
+    end
+  end)
+
+  -- Recalculate scroll child height so the scrollbar reflects current content
+  recalcContentHeight = function()
+    local total = 10 -- top padding
+    local SECTION_GAP = LAYOUT.SECTION_GAP
+    for i, sf in ipairs(sectionFrames) do
+      if i > 1 then
+        total = total + SECTION_GAP
+      end
+      total = total + (sf:GetHeight() or 0)
+    end
+    -- Gaps between major UI sections
+    total = total + SECTION_GAP + (colorSectionFrame:GetHeight() or 0)
+    total = total + 20 -- bottom padding
+    scrollChild:SetHeight(total)
+  end
+
+  -- Make recalc accessible to search filter
+  _G.__UHC_RecalcContentHeight = recalcContentHeight
+
+  -- Hook into global search filter to handle UI Settings section
+  -- Wraps the earlier definition to include UI Settings logic (which relies on variables created after the original function).
+  -- This ensures both Presets and UI Settings respond to the single search box.
+  local originalSearchFilter = _G.UHC_ApplySettingsSearchFilter
+  _G.UHC_ApplySettingsSearchFilter = function(q)
+    if originalSearchFilter then
+      originalSearchFilter(q)
+    end
+
+    if q and q ~= '' then
+      -- Search mode: Force expand and reflow the UI Settings section
+      if _G.__UHC_ToggleUISettingsCollapse then
+        _G.__UHC_ToggleUISettingsCollapse(false)
+      end
+    else
+      -- Clear mode: Restore persisted collapsed state
+      local persistedState = GLOBAL_SETTINGS.collapsedSettingsSections.uiColour
+      if persistedState == nil then
+        persistedState = true
+      end -- Default to collapsed
+      if _G.__UHC_ToggleUISettingsCollapse then
+        _G.__UHC_ToggleUISettingsCollapse(persistedState)
+      end
+    end
+
+    if recalcContentHeight then
+      recalcContentHeight()
+    end
+  end
+
+  -- Initial recalculation after building UI
+  if recalcContentHeight then
+    recalcContentHeight()
+  end
+end
