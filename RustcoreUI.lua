@@ -280,7 +280,7 @@ local function StartSpinAnimations(spinRows, onAllDone)
         row.targetOffset = finalOffset
         row.startOffset  = 0
         row.startTime    = GetTime() + 0.2 + (idx - 1) * 0.35
-        row.duration     = 3.5 + idx * 0.5
+        row.duration     = 4.0
         row.spinning     = true
         row.done         = false
         row.isFirst      = (idx == 1)
