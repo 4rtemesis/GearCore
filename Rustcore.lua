@@ -281,7 +281,7 @@ local function CreateMinimapButton()
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(Rustcore.GetAssetPath("RCicon.png"))
     icon:SetSize(17, 17)
-    icon:SetPoint("CENTER", btn, "CENTER", -10, 11)
+    icon:SetPoint("CENTER", btn, "CENTER", -11, 12)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
 
