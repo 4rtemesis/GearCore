@@ -12,9 +12,11 @@ local DIFF_DESCS  = {
     [3] = "Lose 25% of your equipped items on death (rounded up).",
     [4] = "Lose 50% of your equipped items on death (rounded up).",
     [5] = "Lose every equipped item on death.",
-}
+} 
 
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
+local DEFAULT_TITLE_TEXT = "|cffff4444Rustcore|r Options"
+local COMBAT_TITLE_TEXT = "|cffff4444Settings are locked while in combat.|r"
 
 local function SettingsLocked()
     return Rustcore and Rustcore.SettingsLocked and Rustcore.SettingsLocked()
@@ -101,9 +103,14 @@ local function RefreshCombatLockState(frame)
 
     if frame.combatNote then
         if locked then
-            frame.combatNote:SetText("Settings are locked while in combat.")
+            if frame.titleText then
+                frame.titleText:SetText(COMBAT_TITLE_TEXT)
+            end
             frame.combatNote:Show()
         else
+            if frame.titleText then
+                frame.titleText:SetText(DEFAULT_TITLE_TEXT)
+            end
             frame.combatNote:Hide()
         end
     end
@@ -128,7 +135,8 @@ local function BuildOptionsFrame()
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -16)
-    title:SetText("|cffff4444Rustcore|r Options")
+    title:SetText(DEFAULT_TITLE_TEXT)
+    f.titleText = title
 
     local dragHandle = CreateFrame("Frame", nil, f)
     dragHandle:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -10)
@@ -203,8 +211,6 @@ local function BuildOptionsFrame()
     combatNote:SetWidth(340)
     combatNote:SetJustifyH("LEFT")
     combatNote:SetWordWrap(true)
-    combatNote:SetTextColor(1, 0.3, 0.3)
-    combatNote:SetText("Settings are locked while in combat.")
     combatNote:Hide()
     f.combatNote = combatNote
 
