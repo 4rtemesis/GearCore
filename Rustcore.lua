@@ -38,6 +38,21 @@ local isDead          = false
 local lastDeathSource = nil  -- last attacker/environment that hit the player
 local minimapButton
 
+local function GetMinimapRadius()
+    local width = Minimap and Minimap:GetWidth() or 140
+    local height = Minimap and Minimap:GetHeight() or 140
+    local radius = (math.min(width, height) * 0.5) + 10
+    return math.max(64, radius)
+end
+
+local function GetMinimapAngleFromCursor()
+    local mx, my = Minimap:GetCenter()
+    local scale = UIParent:GetEffectiveScale()
+    local cx, cy = GetCursorPosition()
+    cx, cy = cx / scale, cy / scale
+    return math.deg(math.atan2(cy - my, cx - mx))
+end
+
 -- ── Settings ──────────────────────────────────────────────────────────────────
 
 function Rustcore.GetSetting(key)
@@ -241,7 +256,7 @@ end
 local function UpdateMinimapButtonPosition()
     if not minimapButton then return end
     local angle = (RustcoreDB.minimapAngle or 220) * math.pi / 180
-    local radius = 78
+    local radius = GetMinimapRadius()
     minimapButton:ClearAllPoints()
     minimapButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
 end
@@ -284,14 +299,26 @@ local function CreateMinimapButton()
     overlay:SetSize(54, 54)
     overlay:SetPoint("CENTER", btn, "CENTER", 0, 0)
 
+    btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+    local highlight = btn:GetHighlightTexture()
+    highlight:SetBlendMode("ADD")
+    highlight:SetSize(56, 56)
+    highlight:SetPoint("CENTER", btn, "CENTER", 0, 0)
+
     btn:SetScript("OnEnter", function(self)
+        if self:GetHighlightTexture() then
+            self:GetHighlightTexture():Show()
+        end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:AddLine("Rustcore")
         GameTooltip:AddLine("Left-click: Open options", 1, 1, 1)
         GameTooltip:AddLine("Right-click: Show pending deletions", 1, 1, 1)
         GameTooltip:Show()
     end)
-    btn:SetScript("OnLeave", function()
+    btn:SetScript("OnLeave", function(self)
+        if self:GetHighlightTexture() then
+            self:GetHighlightTexture():Hide()
+        end
         GameTooltip:Hide()
     end)
     btn:SetScript("OnClick", function(_, button)
@@ -304,17 +331,15 @@ local function CreateMinimapButton()
     btn:SetScript("OnDragStart", function(self)
         self.dragging = true
         self:SetScript("OnUpdate", function(frame)
-            local mx, my = Minimap:GetCenter()
-            local cx, cy = GetCursorPosition()
-            local scale = Minimap:GetEffectiveScale()
-            cx, cy = cx / scale, cy / scale
-            RustcoreDB.minimapAngle = math.deg(math.atan2(cy - my, cx - mx))
+            RustcoreDB.minimapAngle = GetMinimapAngleFromCursor()
             UpdateMinimapButtonPosition()
         end)
     end)
     btn:SetScript("OnDragStop", function(self)
         self.dragging = nil
         self:SetScript("OnUpdate", nil)
+        RustcoreDB.minimapAngle = GetMinimapAngleFromCursor()
+        UpdateMinimapButtonPosition()
     end)
 
     minimapButton = btn
@@ -323,11 +348,14 @@ end
 
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
+eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("PLAYER_DEAD")
 eventFrame:RegisterEvent("PLAYER_ALIVE")
+eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_UNGHOST")
+eventFrame:RegisterEvent("UI_SCALE_CHANGED")
 eventFrame:RegisterEvent("MAIL_SHOW")
 eventFrame:RegisterEvent("AUCTION_HOUSE_SHOW")
 eventFrame:RegisterEvent("TRADE_SHOW")
@@ -395,6 +423,9 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 RustcoreUI.OnResurrect(RustcoreDB.pendingDeletion, RustcoreDB.pendingDeletionSnapshot)
             end)
         end
+
+    elseif event == "PLAYER_ENTERING_WORLD" or event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
+        UpdateMinimapButtonPosition()
 
     elseif event == "MAIL_SHOW" then
         if Rustcore.GetSetting("selfFound") then
