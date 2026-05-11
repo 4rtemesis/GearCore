@@ -8,5 +8,6 @@
 
 Rustcore.lua
 RustcoreBroadcast.lua
+RustcoreTheme.lua
 RustcoreOptions.lua
 RustcoreUI.lua

@@ -17,6 +17,7 @@ files=(
   "RustcoreEra.toc"
   "Rustcore.lua"
   "RustcoreBroadcast.lua"
+  "RustcoreTheme.lua"
   "RustcoreOptions.lua"
   "RustcoreUI.lua"
   "RCicon.png"
@@ -27,6 +28,8 @@ files=(
 for file in "${files[@]}"; do
   cp "${source_dir}/${file}" "${stage_dir}/"
 done
+
+cp -r "${source_dir}/UI" "${stage_dir}/"
 
 rm -f "${zip_path}"
 

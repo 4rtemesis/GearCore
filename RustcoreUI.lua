@@ -57,6 +57,7 @@ local ROW_SPACING = 10    -- vertical gap between rows
 local FADE_W      = 60    -- width of each fade gradient on edges
 local MAX_ROWS_PER_COLUMN = 9
 local COLUMN_SPACING = 20
+local CENTER_ICON_OFFSET_X = 2
 
 -- Collect all currently equipped item textures (for the icon strip)
 local function GetEquippedIconList()
@@ -151,9 +152,14 @@ local function BuildSpinRow(parent, xOffset, yOffset, targetSlot, targetTex, all
     clip:SetPoint("TOP", row, "TOP", 0, -(ARROW_H + 6))
     clip:SetClipsChildren(true)
 
+    local clipBg = clip:CreateTexture(nil, "BACKGROUND")
+    clipBg:SetAllPoints(clip)
+    clipBg:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
+    clipBg:SetVertexColor(0, 0, 0, 1)
+
     local selectedOverlay = clip:CreateTexture(nil, "OVERLAY")
     selectedOverlay:SetSize(ICON_SIZE, ICON_SIZE)
-    selectedOverlay:SetPoint("CENTER", clip, "CENTER", 0, 0)
+    selectedOverlay:SetPoint("CENTER", clip, "CENTER", CENTER_ICON_OFFSET_X, 0)
     selectedOverlay:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     selectedOverlay:SetVertexColor(1, 0.15, 0.15, 1)
     selectedOverlay:Hide()
@@ -274,7 +280,7 @@ local function StartSpinAnimations(spinRows, onAllDone)
     local totalIcons = spinRows[1].totalIcons
 
     for idx, row in ipairs(spinRows) do
-        local centerTarget = STRIP_W / 2 - ICON_SIZE / 2
+        local centerTarget = STRIP_W / 2 - ICON_SIZE / 2 - CENTER_ICON_OFFSET_X
         local baseOffset = (row.chosenIndex - 1) * step - centerTarget
         local laps = 3 + idx
         local finalOffset = baseOffset + laps * totalIcons * step
@@ -342,16 +348,10 @@ local function BuildFrame()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-
-    f:SetBackdrop({
-        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile     = true, tileSize = 32, edgeSize = 32,
-        insets   = { left=11, right=12, top=12, bottom=11 },
-    })
+    RustcoreTheme.ApplyFrameSkin(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -16)
+    title:SetPoint("TOP", f, "TOP", 0, -22)
     title:SetText("|cffff4444Rustcore|r — Death Penalty")
     f.title = title
 
@@ -374,8 +374,9 @@ local function BuildFrame()
 
     -- Delete button
     local btn = CreateFrame("Button", "RustcoreDeletionButton", f, "UIPanelButtonTemplate")
-    btn:SetSize(180, 36)
+    btn:SetSize(200, 40)
     btn:SetScript("OnClick", RustcoreUI.ExecuteDeletion)
+    RustcoreTheme.SkinButton(btn)
     f.deleteBtn = btn
     btn:Hide()
 
@@ -407,7 +408,7 @@ ClearSpinRows = function()
 end
 
 local function SnapRowToFinal(row, highlight)
-    local centerTarget = STRIP_W / 2 - ICON_SIZE / 2
+    local centerTarget = STRIP_W / 2 - ICON_SIZE / 2 - CENTER_ICON_OFFSET_X
     row.offset = (row.chosenIndex - 1) * row.step - centerTarget
     UpdateRowPositions(row)
     if highlight then
@@ -430,7 +431,7 @@ PopulateSpinUI = function(items, skipAnim)
     local rowsInTallestColumn = math.min(itemCount, rowsPerColumn)
     local totalH = rowsInTallestColumn * (rowH + ROW_SPACING) - ROW_SPACING
     local totalW = columnCount * STRIP_W + (columnCount - 1) * COLUMN_SPACING
-    local frameH = totalH + 140
+    local frameH = totalH + 170
 
     f:SetSize(totalW + 60, frameH)
     f:ClearAllPoints()
@@ -472,7 +473,7 @@ PopulateSpinUI = function(items, skipAnim)
 
     f.rowContainer:SetHeight(totalH)
     f.deleteBtn:ClearAllPoints()
-    f.deleteBtn:SetPoint("TOP", f.rowContainer, "BOTTOM", 0, -20)
+    f.deleteBtn:SetPoint("BOTTOM", f, "BOTTOM", 0, 36)
 
     if skipAnim then
         for i, row in ipairs(spinRows) do
@@ -675,6 +676,7 @@ function RustcoreUI.ShowDeletionFrame(items, snapshotItems)
     SyncPendingDeletionDB()
 
     local f = EnsureFrame()
+    RustcoreTheme.SetDifficultyBackground(f, Rustcore.GetSetting("difficulty"))
     if f.subLabel then
         local src = RustcoreDB and RustcoreDB.lastDeathSource
         f.subLabel:SetText(src and ("Killed by: " .. src) or "")

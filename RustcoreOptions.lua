@@ -39,6 +39,10 @@ local function ApplyDifficultyValue(slider, diffDesc, value)
     local txt = _G[slider:GetName().."Text"]
     if txt then txt:SetText(DIFF_LABELS[v]) end
     diffDesc:SetText(DIFF_DESCS[v])
+    local parent = slider:GetParent()
+    if parent then
+        RustcoreTheme.SetDifficultyBackground(parent, v)
+    end
 end
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,10 +52,7 @@ local function MakeCheckbox(parent, labelText, tooltipText, anchorTo, yOff, sett
     cb:SetSize(26, 26)
     cb:SetPoint("TOPLEFT", anchorTo, "BOTTOMLEFT", 0, yOff)
 
-    cb:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-    cb:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
-    cb:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
-    cb:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    RustcoreTheme.SkinCheckbox(cb)
 
     local lbl = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     lbl:SetPoint("LEFT", cb, "RIGHT", 4, 0)
@@ -121,21 +122,15 @@ end
 
 local function BuildOptionsFrame()
     local f = CreateFrame("Frame", "RustcoreOptionsFrame", UIParent, backdropTemplate)
-    f:SetSize(390, 590)
+    f:SetSize(580, 500)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetMovable(true)
-
-    f:SetBackdrop({
-        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile     = true, tileSize = 32, edgeSize = 32,
-        insets   = { left=11, right=12, top=12, bottom=11 },
-    })
+    RustcoreTheme.ApplyFrameSkin(f)
 
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -16)
+    title:SetPoint("TOP", f, "TOP", 0, -22)
     title:SetText(DEFAULT_TITLE_TEXT)
     f.titleText = title
 
@@ -148,35 +143,28 @@ local function BuildOptionsFrame()
     dragHandle:SetScript("OnDragStart", function() f:StartMoving() end)
     dragHandle:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
 
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    local closeBtn = CreateFrame("Button", nil, f)
+    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -18)
     closeBtn:SetFrameLevel(f:GetFrameLevel() + 10)
+    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    RustcoreTheme.SkinExitButton(closeBtn)
+
+    local leftColX = 34
+    local rightColX = 294
 
     -- ── Difficulty section ────────────────────────────────────────────────────
     local diffHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    diffHeader:SetPoint("TOPLEFT", f, "TOPLEFT", 69, -52)
+    diffHeader:SetPoint("TOPLEFT", f, "TOPLEFT", leftColX, -58)
     diffHeader:SetText("Difficulty Mode")
     f.diffHeader = diffHeader
 
     -- Five-step slider (1=Lite, 2=Normal, 3=Hard, 4=Brutal, 5=Extreme)
     local slider = CreateFrame("Slider", "RustcoreDifficultySlider", f, "OptionsSliderTemplate")
-    slider:SetPoint("TOP", f, "TOP", 0, -90)
-    slider:SetWidth(300)
+    slider:SetPoint("TOP", title, "BOTTOM", 0, -34)
+    slider:SetWidth(420)
     slider:SetMinMaxValues(1, 5)
     slider:SetValueStep(1)
-
-    local sliderTrack = CreateFrame("Frame", nil, f, backdropTemplate)
-    sliderTrack:SetSize(284, 8)
-    sliderTrack:SetPoint("CENTER", slider, "CENTER", 0, -1)
-    sliderTrack:SetFrameLevel(slider:GetFrameLevel() - 1)
-    sliderTrack:SetBackdrop({
-        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 10,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 },
-    })
-    sliderTrack:SetBackdropColor(0.08, 0.08, 0.08, 0.9)
-    sliderTrack:SetBackdropBorderColor(0.72, 0.58, 0.18, 0.95)
+    local sliderTrack = RustcoreTheme.SkinSlider(slider, 450, -1)
 
     local sliderLow  = _G[slider:GetName().."Low"]
     local sliderHigh = _G[slider:GetName().."High"]
@@ -194,22 +182,22 @@ local function BuildOptionsFrame()
     if sliderText then
         sliderText:SetText(DIFF_LABELS[Rustcore.GetSetting("difficulty")])
         sliderText:ClearAllPoints()
-        sliderText:SetPoint("LEFT", diffHeader, "RIGHT", 10, 0)
+        sliderText:SetPoint("LEFT", diffHeader, "RIGHT", 12, 0)
         sliderText:SetJustifyH("LEFT")
-        sliderText:SetWidth(120)
+        sliderText:SetWidth(110)
     end
     f.sliderText = sliderText
 
     local diffDesc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    diffDesc:SetPoint("TOPLEFT", sliderTrack, "BOTTOMLEFT", 16, -28)
-    diffDesc:SetWidth(284)
+    diffDesc:SetPoint("TOPLEFT", sliderTrack, "BOTTOMLEFT", 8, -26)
+    diffDesc:SetWidth(420)
     diffDesc:SetJustifyH("LEFT")
     diffDesc:SetTextColor(1, 0.82, 0)
     diffDesc:SetText(DIFF_DESCS[Rustcore.GetSetting("difficulty")])
 
     local combatNote = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     combatNote:SetPoint("BOTTOMLEFT", diffHeader, "TOPLEFT", 0, 8)
-    combatNote:SetWidth(340)
+    combatNote:SetWidth(480)
     combatNote:SetJustifyH("LEFT")
     combatNote:SetWordWrap(true)
     combatNote:Hide()
@@ -228,7 +216,7 @@ local function BuildOptionsFrame()
 
     -- ── Self-Found section ────────────────────────────────────────────────────
     local sfHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    sfHeader:SetPoint("TOPLEFT", diffDesc, "BOTTOMLEFT", 0, -22)
+    sfHeader:SetPoint("TOPLEFT", diffDesc, "BOTTOMLEFT", -8, -26)
     sfHeader:SetText("Self-Found")
 
     local cbSelfFound = MakeCheckbox(f,
@@ -238,7 +226,7 @@ local function BuildOptionsFrame()
 
     -- ── Exceptions section ────────────────────────────────────────────────────
     local excHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    excHeader:SetPoint("TOPLEFT", cbSelfFound, "BOTTOMLEFT", 0, -18)
+    excHeader:SetPoint("TOPLEFT", cbSelfFound, "BOTTOMLEFT", 0, -16)
     excHeader:SetText("Exceptions")
 
     local cbWeapon = MakeCheckbox(f,
@@ -260,7 +248,7 @@ local function BuildOptionsFrame()
     excNote:SetText("Applies to all difficulty modes.")
 
     local uiHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    uiHeader:SetPoint("TOPLEFT", excNote, "BOTTOMLEFT", -30, -22)
+    uiHeader:SetPoint("TOPLEFT", sfHeader, "TOPLEFT", rightColX - leftColX, 0)
     uiHeader:SetText("Interface")
 
     local cbMinimap = MakeCheckbox(f,
@@ -270,7 +258,7 @@ local function BuildOptionsFrame()
 
     -- ── Death broadcast section ───────────────────────────────────────────────
     local bcHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    bcHeader:SetPoint("TOPLEFT", cbMinimap, "BOTTOMLEFT", 0, -18)
+    bcHeader:SetPoint("TOPLEFT", cbMinimap, "BOTTOMLEFT", 0, -16)
     bcHeader:SetText("Death Broadcast")
 
     local cbBroadcast = MakeCheckbox(f,
@@ -290,16 +278,17 @@ local function BuildOptionsFrame()
 
     -- ── Death penalty recovery ────────────────────────────────────────────────
     local queueHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    queueHeader:SetPoint("TOPLEFT", cbShowWarning, "BOTTOMLEFT", 0, -22)
+    queueHeader:SetPoint("BOTTOM", f, "BOTTOM", 0, 106)
     queueHeader:SetText("Death Penalty Queue")
 
     local queueBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    queueBtn:SetSize(260, 28)
-    queueBtn:SetPoint("TOPLEFT", queueHeader, "BOTTOMLEFT", 0, -8)
+    queueBtn:SetSize(230, 40)
+    queueBtn:SetPoint("TOP", queueHeader, "BOTTOM", 0, -10)
     queueBtn:SetScript("OnClick", function()
         f:Hide()
         RustcoreUI.ReopenDeletionFrame()
     end)
+    RustcoreTheme.SkinButton(queueBtn)
     f.queueBtn = queueBtn
 
     -- Store refs for Refresh
@@ -313,6 +302,7 @@ local function BuildOptionsFrame()
 
     f:SetScript("OnShow", function(self)
         local v = Rustcore.GetSetting("difficulty")
+        RustcoreTheme.SetDifficultyBackground(self, v)
         self.diffSlider:SetValue(v)
         if self.sliderText then self.sliderText:SetText(DIFF_LABELS[v]) end
         self.diffDesc:SetText(DIFF_DESCS[v])
@@ -326,7 +316,7 @@ local function BuildOptionsFrame()
 
         local count = RustcoreUI.GetPendingCount()
         if count > 0 then
-            self.queueBtn:SetText("Show Pending Deletions  (" .. count .. " items)")
+            self.queueBtn:SetText("Show Pending Deletions")
             self.queueBtn:Enable()
         else
             self.queueBtn:SetText("No Pending Deletions")
