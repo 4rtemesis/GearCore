@@ -59,8 +59,12 @@ local function Send(markedItems, deathSource)
     local link = bestItem and bestItem.link or ""
 
     local count = #markedItems
-    local msg = table.concat({ PREFIX, name, cl, level, zone, src, link, bestIlvl, count }, DELIM)
-    SendChatMessage(msg, "CHANNEL", nil, channelNum)
+    local msg = table.concat({ name, cl, level, zone, src, link, bestIlvl, count }, DELIM)
+    if C_ChatInfo and C_ChatInfo.SendAddonMessage then
+        C_ChatInfo.SendAddonMessage(PREFIX, msg, "CHANNEL", channelNum)
+    elseif SendAddonMessage then
+        SendAddonMessage(PREFIX, msg, "CHANNEL", channelNum)
+    end
 end
 
 function RustcoreBroadcast.Announce(markedItems, deathSource)
@@ -81,16 +85,16 @@ end
 
 local function Parse(msgStr)
     local parts = { strsplit(DELIM, msgStr) }
-    if #parts < 8 or parts[1] ~= PREFIX then return nil end
+    if #parts < 8 then return nil end
     return {
-        name   = parts[2],
-        class  = parts[3],
-        level  = tonumber(parts[4]),
-        zone   = parts[5],
-        source = parts[6],
-        link   = parts[7],
-        ilvl   = tonumber(parts[8]) or 0,
-        count  = tonumber(parts[9]) or 1,
+        name   = parts[1],
+        class  = parts[2],
+        level  = tonumber(parts[3]),
+        zone   = parts[4],
+        source = parts[5],
+        link   = parts[6],
+        ilvl   = tonumber(parts[7]) or 0,
+        count  = tonumber(parts[8]) or 1,
     }
 end
 
@@ -124,20 +128,18 @@ end
 
 local f = CreateFrame("Frame")
 f:RegisterEvent("CHANNEL_UI_UPDATE")
-f:RegisterEvent("CHAT_MSG_CHANNEL")
+f:RegisterEvent("CHAT_MSG_ADDON")
 
 f:SetScript("OnEvent", function(_, event, ...)
     if event == "CHANNEL_UI_UPDATE" then
         RefreshChannelNum()
 
-    elseif event == "CHAT_MSG_CHANNEL" then
-        local msg, _, _, _, _, _, _, _, chanBase = ...
-        if chanBase and chanBase:lower() == CHANNEL_NAME then
-            if msg:sub(1, #PREFIX) == PREFIX then
-                local d = Parse(msg)
-                if d and d.name ~= UnitName("player") then
-                    Display(d)
-                end
+    elseif event == "CHAT_MSG_ADDON" then
+        local prefix, msg, channelType, sender = ...
+        if prefix == PREFIX and channelType == "CHANNEL" then
+            local d = Parse(msg)
+            if d and sender ~= UnitName("player") and d.name ~= UnitName("player") then
+                Display(d)
             end
         end
     end
@@ -148,6 +150,11 @@ function RustcoreBroadcast.Init()
     initFrame:RegisterEvent("PLAYER_LOGIN")
     initFrame:SetScript("OnEvent", function(self)
         self:UnregisterAllEvents()
+        if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+            C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
+        elseif RegisterAddonMessagePrefix then
+            RegisterAddonMessagePrefix(PREFIX)
+        end
         JoinChannel()
     end)
 end

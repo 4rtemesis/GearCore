@@ -13,8 +13,6 @@ local BUTTON_TEXT_OFFSET_Y = -1
 local SLIDER_THUMB_WIDTH = 9
 local SLIDER_THUMB_HEIGHT = 36
 local EXIT_BUTTON_SIZE = 22
-local DEFAULT_HIGHLIGHT_TEXTURE = "Interface\\Buttons\\ButtonHilight-Square"
-
 local DIFFICULTY_BACKGROUNDS = {
     [1] = "Rustcore-frame-background-1.tga",
     [2] = "Rustcore-frame-background-2.tga",
@@ -117,24 +115,43 @@ function RustcoreTheme.SkinButton(button)
     button:SetNormalTexture(Asset("Rustcore-texture-button-1 copy.tga"))
     button:SetPushedTexture(Asset("Rustcore-texture-buttonpressed-1.tga"))
     button:SetDisabledTexture(Asset("Rustcore-texture-buttonunavailable-1 copy.tga"))
-    button:SetHighlightTexture(DEFAULT_HIGHLIGHT_TEXTURE, "ADD")
     button:SetPushedTextOffset(0, BUTTON_TEXT_OFFSET_Y)
 
     local normal = button:GetNormalTexture()
     local pushed = button:GetPushedTexture()
     local disabled = button:GetDisabledTexture()
-    local highlight = button:GetHighlightTexture()
 
     if normal then normal:SetAllPoints(button) end
     if pushed then pushed:SetAllPoints(button) end
     if disabled then disabled:SetAllPoints(button) end
-    if highlight then
-        highlight:SetAllPoints(button)
-        highlight:SetVertexColor(1, 1, 1, 0.35)
-    end
+
+    local hover = button:CreateTexture(nil, "OVERLAY")
+    hover:SetPoint("TOPLEFT", button, "TOPLEFT", 3, -3)
+    hover:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -3, 3)
+    hover:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
+    hover:SetBlendMode("ADD")
+    hover:SetVertexColor(1, 0.46, 0.12, 0.09)
+    hover:Hide()
+    button.rustcoreThemeHover = hover
+
+    button:HookScript("OnEnter", function(self)
+        if self:IsEnabled() and self.rustcoreThemeHover then
+            self.rustcoreThemeHover:Show()
+        end
+    end)
+    button:HookScript("OnLeave", function(self)
+        if self.rustcoreThemeHover then
+            self.rustcoreThemeHover:Hide()
+        end
+    end)
 
     button:HookScript("OnEnable", EnsureButtonState)
-    button:HookScript("OnDisable", EnsureButtonState)
+    button:HookScript("OnDisable", function(self)
+        EnsureButtonState(self)
+        if self.rustcoreThemeHover then
+            self.rustcoreThemeHover:Hide()
+        end
+    end)
     button.rustcoreThemeButtonSkin = true
     EnsureButtonState(button)
 end
@@ -144,25 +161,83 @@ function RustcoreTheme.SkinExitButton(button)
 
     button:SetNormalTexture(Asset("Rustcore-texture-exitbutton-1 copy.tga"))
     button:SetPushedTexture(Asset("Rustcore-texture-exitbutton-1 copy.tga"))
-    button:SetHighlightTexture(DEFAULT_HIGHLIGHT_TEXTURE, "ADD")
     button:SetSize(EXIT_BUTTON_SIZE, EXIT_BUTTON_SIZE)
 
     local normal = button:GetNormalTexture()
     local pushed = button:GetPushedTexture()
-    local highlight = button:GetHighlightTexture()
 
     if normal then normal:SetAllPoints(button) end
     if pushed then
         pushed:SetAllPoints(button)
         pushed:SetVertexColor(0.84, 0.84, 0.84, 1)
     end
-    if highlight then
-        highlight:SetAllPoints(button)
-        highlight:SetVertexColor(1, 1, 1, 0.38)
-    end
+
+    local hover = button:CreateTexture(nil, "OVERLAY")
+    hover:SetAllPoints(button)
+    hover:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
+    hover:SetBlendMode("ADD")
+    hover:SetVertexColor(1, 0.55, 0.16, 0.18)
+    hover:Hide()
+    button.rustcoreThemeExitHover = hover
+
+    button:HookScript("OnEnter", function(self)
+        if self.rustcoreThemeExitHover then
+            self.rustcoreThemeExitHover:Show()
+        end
+    end)
+    button:HookScript("OnClick", function()
+        PlaySoundFile(Rustcore.GetAssetPath("Exitsound.wav"), "Master")
+    end)
+    button:HookScript("OnLeave", function(self)
+        if self.rustcoreThemeExitHover then
+            self.rustcoreThemeExitHover:Hide()
+        end
+    end)
 
     button:SetHitRectInsets(-4, -4, -4, -4)
     button.rustcoreThemeExitSkin = true
+end
+
+function RustcoreTheme.SkinMinimizeButton(button)
+    if button.rustcoreThemeMinimizeSkin then return end
+
+    button:SetNormalTexture(Asset("Rustcore-texture-minimizebutton-1.tga"))
+    button:SetPushedTexture(Asset("Rustcore-texture-minimizebutton-1.tga"))
+    button:SetSize(EXIT_BUTTON_SIZE, EXIT_BUTTON_SIZE)
+
+    local normal = button:GetNormalTexture()
+    local pushed = button:GetPushedTexture()
+
+    if normal then normal:SetAllPoints(button) end
+    if pushed then
+        pushed:SetAllPoints(button)
+        pushed:SetVertexColor(0.84, 0.84, 0.84, 1)
+    end
+
+    local hover = button:CreateTexture(nil, "OVERLAY")
+    hover:SetAllPoints(button)
+    hover:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
+    hover:SetBlendMode("ADD")
+    hover:SetVertexColor(1, 0.55, 0.16, 0.18)
+    hover:Hide()
+    button.rustcoreThemeMinimizeHover = hover
+
+    button:HookScript("OnEnter", function(self)
+        if self.rustcoreThemeMinimizeHover then
+            self.rustcoreThemeMinimizeHover:Show()
+        end
+    end)
+    button:HookScript("OnClick", function()
+        PlaySoundFile(Rustcore.GetAssetPath("Exitsound.wav"), "Master")
+    end)
+    button:HookScript("OnLeave", function(self)
+        if self.rustcoreThemeMinimizeHover then
+            self.rustcoreThemeMinimizeHover:Hide()
+        end
+    end)
+
+    button:SetHitRectInsets(-4, -4, -4, -4)
+    button.rustcoreThemeMinimizeSkin = true
 end
 
 function RustcoreTheme.SkinCheckbox(checkbox)

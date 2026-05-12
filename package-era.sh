@@ -22,7 +22,11 @@ files=(
   "RustcoreUI.lua"
   "RCicon.png"
   "Breaksound.flac"
+  "difficultysound.wav"
+  "Exitsound.wav"
+  "Metalsound.wav"
   "Spinsound.wav"
+  "ticksound2.wav"
 )
 
 for file in "${files[@]}"; do
@@ -30,6 +34,7 @@ for file in "${files[@]}"; do
 done
 
 cp -r "${source_dir}/UI" "${stage_dir}/"
+cp -r "${source_dir}/Font" "${stage_dir}/"
 
 rm -f "${zip_path}"
 

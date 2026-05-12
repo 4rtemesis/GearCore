@@ -28,6 +28,18 @@ local ClearSpinRows
 local LinksMatch
 
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
+local TITLE_FONT_PATH = Rustcore.GetAssetPath("Font/RUSTED PERSONAL USE.ttf")
+local BODY_FONT_PATH = Rustcore.GetAssetPath("Font/BPpong.otf")
+local TITLE_COLOR = { 0.82, 0.16, 0.16 }
+local ICON_TEX_INSET = 0.10
+local COMPACT_CELL_GAP = 6
+local COMPACT_FRAME_MIN_WIDTH = 280
+local COMPACT_FRAME_MIN_HEIGHT = 210
+
+local function ApplyBodyFont(fontString, size)
+    if not fontString then return end
+    fontString:SetFont(BODY_FONT_PATH, math.max(10, (size or 18) - 2), "")
+end
 
 local function SetTexGradientAlpha(tex, orient, r1,g1,b1,a1, r2,g2,b2,a2)
     if tex.SetGradientAlpha then
@@ -54,10 +66,10 @@ local STRIP_W     = 400   -- visible strip width
 local STRIP_H     = ICON_SIZE
 local ARROW_H     = 18
 local ROW_SPACING = 10    -- vertical gap between rows
-local FADE_W      = 60    -- width of each fade gradient on edges
+local FADE_W      = 88    -- width of each fade gradient on edges
 local MAX_ROWS_PER_COLUMN = 9
 local COLUMN_SPACING = 20
-local CENTER_ICON_OFFSET_X = 2
+local CENTER_ICON_OFFSET_X = 0
 
 -- Collect all currently equipped item textures (for the icon strip)
 local function GetEquippedIconList()
@@ -143,7 +155,7 @@ local function BuildSpinRow(parent, xOffset, yOffset, targetSlot, targetTex, all
     -- Arrow pointing down at center
     local arrow = row:CreateTexture(nil, "OVERLAY")
     arrow:SetSize(ARROW_H, ARROW_H)
-    arrow:SetPoint("TOP", row, "TOP", 0, 0)
+    arrow:SetPoint("TOP", row, "TOP", 0, -10)
     arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
 
     -- Clip frame (hides icons outside the strip)
@@ -160,22 +172,31 @@ local function BuildSpinRow(parent, xOffset, yOffset, targetSlot, targetTex, all
     local selectedOverlay = clip:CreateTexture(nil, "OVERLAY")
     selectedOverlay:SetSize(ICON_SIZE, ICON_SIZE)
     selectedOverlay:SetPoint("CENTER", clip, "CENTER", CENTER_ICON_OFFSET_X, 0)
-    selectedOverlay:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    selectedOverlay:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
     selectedOverlay:SetVertexColor(1, 0.15, 0.15, 1)
     selectedOverlay:Hide()
+
+    local selectedOverlayBorder = CreateFrame("Frame", nil, clip)
+    selectedOverlayBorder:SetSize(ICON_SIZE + 28, ICON_SIZE + 28)
+    selectedOverlayBorder:SetPoint("CENTER", selectedOverlay, "CENTER", 0, -1)
+    selectedOverlayBorder:SetFrameLevel(clip:GetFrameLevel() + 8)
+    selectedOverlayBorder.tex = selectedOverlayBorder:CreateTexture(nil, "OVERLAY")
+    selectedOverlayBorder.tex:SetAllPoints(selectedOverlayBorder)
+    selectedOverlayBorder.tex:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    selectedOverlayBorder:Hide()
 
     -- Left/right fade overlays (drawn on top of icons)
     local fadeL = clip:CreateTexture(nil, "OVERLAY")
     fadeL:SetSize(FADE_W, STRIP_H)
     fadeL:SetPoint("LEFT", clip, "LEFT", 0, 0)
     fadeL:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-    SetTexGradientAlpha(fadeL, "HORIZONTAL", 0,0,0,0.85, 0,0,0,0)
+    SetTexGradientAlpha(fadeL, "HORIZONTAL", 0,0,0,0.98, 0,0,0,0)
 
     local fadeR = clip:CreateTexture(nil, "OVERLAY")
     fadeR:SetSize(FADE_W, STRIP_H)
     fadeR:SetPoint("RIGHT", clip, "RIGHT", 0, 0)
     fadeR:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-    SetTexGradientAlpha(fadeR, "HORIZONTAL", 0,0,0,0, 0,0,0,0.85)
+    SetTexGradientAlpha(fadeR, "HORIZONTAL", 0,0,0,0, 0,0,0,0.98)
 
     -- Build icon pool inside clip: enough to wrap seamlessly
     local totalIcons = #allIcons
@@ -187,13 +208,18 @@ local function BuildSpinRow(parent, xOffset, yOffset, targetSlot, targetTex, all
         ic:SetSize(ICON_SIZE, ICON_SIZE)
         local src = allIcons[((i-1) % totalIcons) + 1]
         ic:SetTexture(src.tex or "Interface\\Icons\\INV_Misc_QuestionMark")
-        ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        ic:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
         ic:SetPoint("LEFT", clip, "LEFT", (i-1)*step, (STRIP_H - ICON_SIZE)/2)
-        iconFrames[i] = { tex = ic, srcIdx = ((i-1) % totalIcons) + 1 }
+        local border = clip:CreateTexture(nil, "OVERLAY")
+        border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+        border:SetSize(ICON_SIZE + 28, ICON_SIZE + 28)
+        border:SetPoint("CENTER", ic, "CENTER", 0, -1)
+        iconFrames[i] = { tex = ic, border = border, srcIdx = ((i-1) % totalIcons) + 1 }
     end
 
     row.clip        = clip
     row.selectedOverlay = selectedOverlay
+    row.selectedOverlayBorder = selectedOverlayBorder
     row.iconFrames  = iconFrames
     row.allIcons    = allIcons
     row.totalIcons  = totalIcons
@@ -215,8 +241,10 @@ local function QueueCenterHighlight(row)
         if row.isFirst and row.targetTex then
             row.selectedOverlay:SetTexture(row.targetTex)
             row.selectedOverlay:Show()
+            if row.selectedOverlayBorder then row.selectedOverlayBorder:Show() end
         else
             row.selectedOverlay:Hide()
+            if row.selectedOverlayBorder then row.selectedOverlayBorder:Hide() end
         end
     end)
 end
@@ -231,15 +259,21 @@ local function UpdateRowPositions(row)
             x = x + row.totalIcons * step
         end
         ic.tex:SetPoint("LEFT", row.clip, "LEFT", x, (STRIP_H - ICON_SIZE)/2)
+        if ic.border then
+            ic.border:SetPoint("CENTER", ic.tex, "CENTER", 0, 0)
+        end
 
         local logIdx = ((i - 1) % row.totalIcons) + 1
         local src = row.allIcons[logIdx]
         ic.tex:SetTexture(src and src.tex or "Interface\\Icons\\INV_Misc_QuestionMark")
-        ic.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        ic.tex:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
         ic.tex:SetVertexColor(1, 1, 1, 1)
     end
     if row.selectedOverlay then
         row.selectedOverlay:Hide()
+    end
+    if row.selectedOverlayBorder then
+        row.selectedOverlayBorder:Hide()
     end
 end
 
@@ -251,8 +285,10 @@ local function MarkCenterIcon(row)
         if row.isFirst and row.targetTex then
             row.selectedOverlay:SetTexture(row.targetTex)
             row.selectedOverlay:Show()
+            if row.selectedOverlayBorder then row.selectedOverlayBorder:Show() end
         else
             row.selectedOverlay:Hide()
+            if row.selectedOverlayBorder then row.selectedOverlayBorder:Hide() end
         end
     end
 end
@@ -352,24 +388,48 @@ local function BuildFrame()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -22)
-    title:SetText("|cffff4444Rustcore|r — Death Penalty")
+    title:SetFont(TITLE_FONT_PATH, 30, "")
+    title:SetTextColor(unpack(TITLE_COLOR))
+    title:SetText("Death Penalty")
     f.title = title
+
+    local bgShade = f:CreateTexture(nil, "ARTWORK")
+    bgShade:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -18)
+    bgShade:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -18, 18)
+    bgShade:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
+    bgShade:SetVertexColor(0, 0, 0, 0.4)
 
     local subLabel = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     subLabel:SetPoint("TOP", title, "BOTTOM", 0, -6)
     subLabel:SetText("")
+    ApplyBodyFont(subLabel, 18)
     f.subLabel = subLabel
 
     -- Container for spin rows, anchored below subLabel
     local rowContainer = CreateFrame("Frame", nil, f)
-    rowContainer:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -70)
-    rowContainer:SetPoint("TOPRIGHT", f, "TOPRIGHT", -20, -70)
+    rowContainer:SetPoint("TOPLEFT", f, "TOPLEFT", 28, -70)
+    rowContainer:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -70)
     f.rowContainer = rowContainer
+
+    local minimizeBtn = CreateFrame("Button", nil, f)
+    minimizeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -6)
+    minimizeBtn:SetFrameLevel(f:GetFrameLevel() + 10)
+    minimizeBtn:SetScript("OnClick", function(self)
+        local parent = self:GetParent()
+        parent.isMinimized = not parent.isMinimized
+        if #pendingItems > 0 then
+            PopulateSpinUI(pendingItems, true)
+            RefreshButtonState()
+        end
+    end)
+    RustcoreTheme.SkinMinimizeButton(minimizeBtn)
+    f.minimizeBtn = minimizeBtn
 
     -- Status message shown while dead
     local statusMsg = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     statusMsg:SetTextColor(1, 0.8, 0)
     statusMsg:SetText("Resurrect to begin deleting items")
+    ApplyBodyFont(statusMsg, 16)
     f.statusMsg = statusMsg
 
     -- Delete button
@@ -377,11 +437,14 @@ local function BuildFrame()
     btn:SetSize(200, 40)
     btn:SetScript("OnClick", RustcoreUI.ExecuteDeletion)
     RustcoreTheme.SkinButton(btn)
+    ApplyBodyFont(btn:GetFontString(), 18)
     f.deleteBtn = btn
     btn:Hide()
 
     f.spinRows   = {}
+    f.compactIcons = {}
     f.spinTicker = nil
+    f.isMinimized = false
 
     f:Hide()
     return f
@@ -405,6 +468,11 @@ ClearSpinRows = function()
         row:SetParent(nil)
     end
     wipe(f.spinRows)
+    for _, iconFrame in ipairs(f.compactIcons or {}) do
+        iconFrame:Hide()
+        iconFrame:SetParent(nil)
+    end
+    wipe(f.compactIcons)
 end
 
 local function SnapRowToFinal(row, highlight)
@@ -421,6 +489,74 @@ PopulateSpinUI = function(items, skipAnim)
     local f = EnsureFrame()
     ClearSpinRows()
 
+    if f.isMinimized then
+        local itemCount = #items
+        local columns = math.max(1, math.ceil(itemCount / MAX_ROWS_PER_COLUMN))
+        local rowsPerColumn = math.ceil(itemCount / columns)
+        local rowsInTallestColumn = math.min(itemCount, rowsPerColumn)
+        local totalW = columns * ICON_SIZE + (columns - 1) * COMPACT_CELL_GAP
+        local totalH = rowsInTallestColumn * ICON_SIZE + math.max(0, rowsInTallestColumn - 1) * COMPACT_CELL_GAP
+        local frameW = math.max(totalW + 86, COMPACT_FRAME_MIN_WIDTH)
+        local frameH = math.max(totalH + 190, COMPACT_FRAME_MIN_HEIGHT)
+
+        f:SetSize(frameW, frameH)
+        f:ClearAllPoints()
+        if frameBottomAnchorX then
+            f:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", frameBottomAnchorX, frameBottomAnchorY)
+        else
+            f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
+
+        f.rowContainer:ClearAllPoints()
+        f.rowContainer:SetPoint("TOP", f, "TOP", 0, -96)
+        f.rowContainer:SetWidth(totalW)
+        f.rowContainer:SetHeight(totalH)
+
+        for i, item in ipairs(items) do
+            local columnIndex = math.floor((i - 1) / rowsPerColumn)
+            local rowIndex = (i - 1) % rowsPerColumn
+            local xOff = columnIndex * (ICON_SIZE + COMPACT_CELL_GAP)
+            local yOff = -(rowIndex * (ICON_SIZE + COMPACT_CELL_GAP))
+
+            local cell = CreateFrame("Frame", nil, f.rowContainer)
+            cell:SetSize(ICON_SIZE, ICON_SIZE)
+            cell:SetPoint("TOPLEFT", f.rowContainer, "TOPLEFT", xOff, yOff)
+
+            local bg = cell:CreateTexture(nil, "BACKGROUND")
+            bg:SetAllPoints(cell)
+            bg:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
+            bg:SetVertexColor(0, 0, 0, 1)
+
+            local icon = cell:CreateTexture(nil, "ARTWORK")
+            icon:SetAllPoints(cell)
+            icon:SetTexture(GetDisplayTexture(item))
+            icon:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
+
+            local redOverlay = cell:CreateTexture(nil, "OVERLAY")
+            redOverlay:SetAllPoints(cell)
+            redOverlay:SetTexture(GetDisplayTexture(item))
+            redOverlay:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
+            redOverlay:SetVertexColor(1, 0.15, 0.15, 1)
+            redOverlay:SetShown(i == 1)
+
+            local border = CreateFrame("Frame", nil, cell)
+            border:SetSize(ICON_SIZE + 28, ICON_SIZE + 28)
+            border:SetPoint("CENTER", cell, "CENTER", 0, -1)
+            border:SetFrameLevel(cell:GetFrameLevel() + 4)
+            border.tex = border:CreateTexture(nil, "OVERLAY")
+            border.tex:SetAllPoints(border)
+            border.tex:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+
+            cell:Show()
+            f.compactIcons[#f.compactIcons + 1] = cell
+        end
+
+        f.deleteBtn:ClearAllPoints()
+        f.deleteBtn:SetPoint("BOTTOM", f, "BOTTOM", 0, 36)
+        RefreshButtonState()
+        return
+    end
+
     local allIcons = activeSpinIcons or GetEquippedIconList()
     if #allIcons == 0 then return end
 
@@ -436,11 +572,14 @@ PopulateSpinUI = function(items, skipAnim)
     f:SetSize(totalW + 60, frameH)
     f:ClearAllPoints()
     if frameBottomAnchorX then
-        f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", frameBottomAnchorX, frameBottomAnchorY)
+        f:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", frameBottomAnchorX, frameBottomAnchorY)
     else
         f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     end
 
+    f.rowContainer:ClearAllPoints()
+    f.rowContainer:SetPoint("TOPLEFT", f, "TOPLEFT", 28, -70)
+    f.rowContainer:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -70)
     f.rowContainer:SetWidth(totalW)
     f.rowContainer:SetHeight(totalH)
 
@@ -570,7 +709,7 @@ local function RestoreFrameVisualState()
 
     -- Capture bottom anchor on first show so resizes after deletions stay grounded
     if not frameBottomAnchorX then
-        frameBottomAnchorX = f:GetLeft()
+        frameBottomAnchorX = f:GetCenter()
         frameBottomAnchorY = f:GetBottom()
     end
 
@@ -683,6 +822,7 @@ function RustcoreUI.ShowDeletionFrame(items, snapshotItems)
     end
 
     PopulateSpinUI(pendingItems)
+    PlaySoundFile(Rustcore.GetAssetPath("Metalsound.wav"), "Master")
     RestoreFrameVisualState()
     RefreshButtonState()
 end
@@ -722,7 +862,7 @@ FinishQueue = function()
     end
 
     if deleteFrame then
-        frameBottomAnchorX = deleteFrame:GetLeft()
+        frameBottomAnchorX = deleteFrame:GetCenter()
         frameBottomAnchorY = deleteFrame:GetBottom()
     end
     PopulateSpinUI(pendingItems, true)
@@ -753,7 +893,7 @@ RemoveFirstPendingItem = function()
 
     -- Capture current bottom before resize so the delete button stays put
     if deleteFrame then
-        frameBottomAnchorX = deleteFrame:GetLeft()
+        frameBottomAnchorX = deleteFrame:GetCenter()
         frameBottomAnchorY = deleteFrame:GetBottom()
     end
     PopulateSpinUI(pendingItems, true)
