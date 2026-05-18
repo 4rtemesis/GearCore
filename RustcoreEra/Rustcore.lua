@@ -23,10 +23,12 @@ local defaults = {
     selfFound       = false, -- block mailbox / AH / trade
     allowRepair     = false, -- if false (default), repair is blocked
     keepMainWeapon  = false, -- spare main weapon slot from deletion
+    ignoreDeathAfterEnemyPlayerDamage = false, -- skip deletion if a hostile player damaged you during the fight
     showMinimapButton = true, -- show the minimap launcher button
     broadcastDeaths = true,  -- broadcast death to Rustcore channel
+    guildDeathMessage = true, -- send a guild chat message after the death animation
     showDeathPopup  = true,  -- show popup notification for other players' deaths
-    showDeathWarning= false, -- show center-screen warning for other players' deaths
+    showDeathWarning= true, -- show center-screen warning for other players' deaths
 }
 
 -- Gear slots tracked (shirt=4, tabard=19 excluded)
@@ -39,8 +41,12 @@ local combatSnapshot  = {}   -- items recorded on combat entry
 local markedItems     = {}   -- items selected for deletion after death
 local isDead          = false
 local lastDeathSource = nil  -- last attacker/environment that hit the player
+local tookEnemyPlayerDamageThisCombat = false
+local pendingGuildDeathMessage
 local minimapButton
 local UpdateMinimapButtonPosition
+local ApplyRepairBlock
+local ClearPendingDeletionData
 local minimapShapes = {
     ["ROUND"] = {true, true, true, true},
     ["SQUARE"] = {false, false, false, false},
@@ -94,7 +100,7 @@ function Rustcore.GetCharacterKey()
 end
 
 function Rustcore.GetAssetPath(filename)
-    local folder = Rustcore.assetFolder or ADDON_NAME or "RustcoreEra"
+    local folder = Rustcore.assetFolder or ADDON_NAME or "Rustcore"
     return "Interface\\AddOns\\" .. folder .. "\\" .. filename
 end
 
@@ -106,6 +112,8 @@ function Rustcore.SetSetting(key, value)
     RustcoreDB[key] = value
     if key == "showMinimapButton" then
         ApplyMinimapButtonVisibility()
+    elseif key == "allowRepair" and ApplyRepairBlock then
+        C_Timer.After(0, ApplyRepairBlock)
     end
     return true
 end
@@ -212,8 +220,70 @@ local function BuildMarkedItems(source)
     end
 end
 
+local function FindHighestIlvlItem(items)
+    local bestItem, bestIlvl = nil, -1
+    for _, item in ipairs(items or {}) do
+        if item and item.link then
+            local ilvl = select(4, GetItemInfo(item.link)) or 0
+            if ilvl > bestIlvl then
+                bestItem = item
+                bestIlvl = ilvl
+            end
+        end
+    end
+    return bestItem, math.max(bestIlvl, 0)
+end
+
+local function QueueGuildDeathMessage(items, deathSource)
+    if not Rustcore.GetSetting("guildDeathMessage") then
+        pendingGuildDeathMessage = nil
+        return
+    end
+    if not IsInGuild or not IsInGuild() then
+        pendingGuildDeathMessage = nil
+        return
+    end
+
+    local bestItem = FindHighestIlvlItem(items)
+    if not bestItem or not bestItem.link then
+        pendingGuildDeathMessage = nil
+        return
+    end
+
+    pendingGuildDeathMessage = {
+        itemLink = bestItem.link,
+        deathSource = (deathSource and deathSource ~= "") and deathSource or "Unknown",
+    }
+end
+
+function Rustcore.FlushPendingGuildDeathMessage()
+    if not pendingGuildDeathMessage then return end
+    if not Rustcore.GetSetting("guildDeathMessage") then
+        pendingGuildDeathMessage = nil
+        return
+    end
+    if not IsInGuild or not IsInGuild() then
+        pendingGuildDeathMessage = nil
+        return
+    end
+
+    SendChatMessage(
+        "[Rustcore] My " .. pendingGuildDeathMessage.itemLink .. " was broken by " .. pendingGuildDeathMessage.deathSource,
+        "GUILD"
+    )
+    pendingGuildDeathMessage = nil
+end
+
 local function OnPlayerDead()
     local ok, err = pcall(function()
+        if Rustcore.GetSetting("ignoreDeathAfterEnemyPlayerDamage") and tookEnemyPlayerDamageThisCombat then
+            ClearPendingDeletionData()
+            pendingGuildDeathMessage = nil
+            wipe(markedItems)
+            print("|cffff4444Rustcore:|r Death penalty skipped because you took damage from an enemy player during that combat.")
+            return
+        end
+
         local source = (#combatSnapshot > 0) and combatSnapshot or nil
         if not source then
             TakeSnapshot()
@@ -237,7 +307,11 @@ local function OnPlayerDead()
                 }
             end
             RustcoreDB.lastDeathSource = lastDeathSource
+            QueueGuildDeathMessage(markedItems, lastDeathSource)
             RustcoreBroadcast.Announce(markedItems, lastDeathSource)
+            if RustcoreUI and RustcoreUI.SetSpinCompleteCallback then
+                RustcoreUI.SetSpinCompleteCallback(Rustcore.FlushPendingGuildDeathMessage)
+            end
             RustcoreUI.ShowDeletionFrame(markedItems, source)
         else
             if Rustcore.GetSetting("difficulty") == 1 then
@@ -254,10 +328,13 @@ end
 
 -- ── Merchant repair blocking ──────────────────────────────────────────────────
 
-local function ApplyRepairBlock()
+ApplyRepairBlock = function()
     if not Rustcore.GetSetting("allowRepair") then
         if MerchantRepairAllButton  then MerchantRepairAllButton:Disable();  MerchantRepairAllButton:SetAlpha(0.35)  end
         if MerchantRepairItemButton then MerchantRepairItemButton:Disable(); MerchantRepairItemButton:SetAlpha(0.35) end
+    else
+        if MerchantRepairAllButton  then MerchantRepairAllButton:Enable();  MerchantRepairAllButton:SetAlpha(1) end
+        if MerchantRepairItemButton then MerchantRepairItemButton:Enable(); MerchantRepairItemButton:SetAlpha(1) end
     end
 end
 
@@ -266,7 +343,7 @@ local function ResetRepairButtons()
     if MerchantRepairItemButton then MerchantRepairItemButton:Enable(); MerchantRepairItemButton:SetAlpha(1) end
 end
 
-local function ClearPendingDeletionData()
+ClearPendingDeletionData = function()
     RustcoreDB.pendingDeletion = nil
     RustcoreDB.pendingDeletionSnapshot = nil
     RustcoreDB.pendingDeletionOwner = nil
@@ -464,11 +541,13 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "PLAYER_REGEN_DISABLED" then
         TakeSnapshot()
+        tookEnemyPlayerDamageThisCombat = false
 
     elseif event == "PLAYER_REGEN_ENABLED" then
         if not isDead then
             wipe(combatSnapshot)
             lastDeathSource = nil
+            tookEnemyPlayerDamageThisCombat = false
         end
 
     elseif event == "PLAYER_DEAD" then
@@ -480,6 +559,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         wipe(combatSnapshot)
         wipe(markedItems)
         lastDeathSource = nil
+        tookEnemyPlayerDamageThisCombat = false
 
         if not UnitIsDeadOrGhost("player") then
             if RustcoreDB.pendingDeletion and #RustcoreDB.pendingDeletion > 0 then
@@ -543,25 +623,44 @@ do
             playerGUID = UnitGUID("player")
             return
         end
-        local _, subEv, _, _, srcName, _, _, dstGUID = CombatLogGetCurrentEventInfo()
+        local _, subEv, _, _, srcName, srcFlags, _, dstGUID = CombatLogGetCurrentEventInfo()
         if not subEv or dstGUID ~= playerGUID then return end
         if subEv == "ENVIRONMENTAL_DAMAGE" then
             lastDeathSource = select(12, CombatLogGetCurrentEventInfo())
         elseif subEv:find("DAMAGE", 1, true) and srcName and srcName ~= "" then
             lastDeathSource = srcName
+            if Rustcore.GetSetting("ignoreDeathAfterEnemyPlayerDamage")
+                and srcFlags
+                and bit.band(srcFlags, COMBATLOG_OBJECT_TYPE_PLAYER or 0) ~= 0
+                and bit.band(srcFlags, COMBATLOG_OBJECT_REACTION_HOSTILE or 0) ~= 0 then
+                tookEnemyPlayerDamageThisCombat = true
+            end
         end
     end)
 end
 
 -- ── Block auto-repair from other addons ──────────────────────────────────────
 do
-    local _orig = RepairAllItems
-    RepairAllItems = function(guildBank)
+    local _origRepairAllItems = RepairAllItems
+    RepairAllItems = function(...)
         if not Rustcore.GetSetting("allowRepair") then
             print("|cffff4444Rustcore:|r Repair blocked.")
             return
         end
-        return _orig(guildBank)
+        if _origRepairAllItems then
+            return _origRepairAllItems(...)
+        end
+    end
+
+    if ShowRepairCursor then
+        local _origShowRepairCursor = ShowRepairCursor
+        ShowRepairCursor = function(...)
+            if not Rustcore.GetSetting("allowRepair") then
+                print("|cffff4444Rustcore:|r Repair blocked.")
+                return
+            end
+            return _origShowRepairCursor(...)
+        end
     end
 end
 

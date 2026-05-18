@@ -1,8 +1,8 @@
 ## Interface: 20505
 ## Title: Rustcore
-## Notes: Hardcore gear loss on death for WoW Classic
+## Notes: Disabled repair and deletes items on death.
 ## Author: Rustcore
-## Version: 1.0
+## Version: 1.11
 ## IconTexture: Interface\AddOns\Rustcore\RCicon.png
 ## SavedVariables: RustcoreDB
 

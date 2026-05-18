@@ -13,12 +13,13 @@ local BUTTON_TEXT_OFFSET_Y = -1
 local SLIDER_THUMB_WIDTH = 9
 local SLIDER_THUMB_HEIGHT = 36
 local EXIT_BUTTON_SIZE = 22
+local FRAME_BACKGROUND_ALPHA = 0.78
 local DIFFICULTY_BACKGROUNDS = {
-    [1] = "Rustcore-frame-background-1.tga",
-    [2] = "Rustcore-frame-background-2.tga",
-    [3] = "Rustcore-frame-background-3.tga",
-    [4] = "Rustcore-frame-background-4.tga",
-    [5] = "Rustcore-frame-background-5.tga",
+    [1] = "background1 copy.tga",
+    [2] = "background2 copy.tga",
+    [3] = "background3 copy.tga",
+    [4] = "background4 copy.tga",
+    [5] = "background5 copy.tga",
 }
 
 local function ApplyTexture(texture, path)
@@ -44,6 +45,7 @@ function RustcoreTheme.ApplyFrameSkin(frame)
     bg:SetPoint("TOPLEFT", frame, "TOPLEFT", FRAME_INSET, -FRAME_INSET)
     bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -FRAME_INSET, FRAME_INSET)
     ApplyTexture(bg, Asset(DIFFICULTY_BACKGROUNDS[1]))
+    bg:SetAlpha(FRAME_BACKGROUND_ALPHA)
 
     local border = CreateFrame("Frame", nil, frame)
     border:SetAllPoints(frame)

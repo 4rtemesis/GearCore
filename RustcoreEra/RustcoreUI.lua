@@ -26,12 +26,15 @@ local ResolveDeletionWithRetry
 local PopulateSpinUI
 local ClearSpinRows
 local LinksMatch
+local spinCompleteCallback
 
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
-local TITLE_FONT_PATH = Rustcore.GetAssetPath("Font/RUSTED PERSONAL USE.ttf")
+local TITLE_FONT_PATH = Rustcore.GetAssetPath("Font/HVD_Peace.ttf")
 local BODY_FONT_PATH = Rustcore.GetAssetPath("Font/BPpong.otf")
-local TITLE_COLOR = { 0.82, 0.16, 0.16 }
+local TITLE_COLOR = { 0.90, 0.12, 0.12 }
 local ICON_TEX_INSET = 0.10
+local ICON_IMAGE_SIZE = 36
+local ICON_Y_OFFSET = 0
 local COMPACT_CELL_GAP = 6
 local COMPACT_FRAME_MIN_WIDTH = 280
 local COMPACT_FRAME_MIN_HEIGHT = 210
@@ -70,6 +73,31 @@ local FADE_W      = 88    -- width of each fade gradient on edges
 local MAX_ROWS_PER_COLUMN = 9
 local COLUMN_SPACING = 20
 local CENTER_ICON_OFFSET_X = 0
+
+local function GetEdgeFadeAlpha(centerX)
+    local leftAlpha = 1
+    local rightAlpha = 1
+
+    if centerX < FADE_W then
+        leftAlpha = math.max(0, math.min(1, centerX / FADE_W))
+    end
+    if centerX > (STRIP_W - FADE_W) then
+        rightAlpha = math.max(0, math.min(1, (STRIP_W - centerX) / FADE_W))
+    end
+
+    return math.max(0, math.min(1, math.min(leftAlpha, rightAlpha)))
+end
+
+local function RunSpinCompleteCallback(delay)
+    if not spinCompleteCallback then return end
+    local callback = spinCompleteCallback
+    spinCompleteCallback = nil
+    if delay and delay > 0 then
+        C_Timer.After(delay, callback)
+    else
+        callback()
+    end
+end
 
 -- Collect all currently equipped item textures (for the icon strip)
 local function GetEquippedIconList()
@@ -170,7 +198,7 @@ local function BuildSpinRow(parent, xOffset, yOffset, targetSlot, targetTex, all
     clipBg:SetVertexColor(0, 0, 0, 1)
 
     local selectedOverlay = clip:CreateTexture(nil, "OVERLAY")
-    selectedOverlay:SetSize(ICON_SIZE, ICON_SIZE)
+    selectedOverlay:SetSize(ICON_IMAGE_SIZE, ICON_IMAGE_SIZE)
     selectedOverlay:SetPoint("CENTER", clip, "CENTER", CENTER_ICON_OFFSET_X, 0)
     selectedOverlay:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
     selectedOverlay:SetVertexColor(1, 0.15, 0.15, 1)
@@ -205,11 +233,11 @@ local function BuildSpinRow(parent, xOffset, yOffset, targetSlot, targetTex, all
     local iconFrames = {}
     for i = 1, visCount do
         local ic = clip:CreateTexture(nil, "ARTWORK")
-        ic:SetSize(ICON_SIZE, ICON_SIZE)
+        ic:SetSize(ICON_IMAGE_SIZE, ICON_IMAGE_SIZE)
         local src = allIcons[((i-1) % totalIcons) + 1]
         ic:SetTexture(src.tex or "Interface\\Icons\\INV_Misc_QuestionMark")
         ic:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
-        ic:SetPoint("LEFT", clip, "LEFT", (i-1)*step, (STRIP_H - ICON_SIZE)/2)
+        ic:SetPoint("LEFT", clip, "LEFT", (i-1)*step + ((ICON_SIZE - ICON_IMAGE_SIZE) / 2), ICON_Y_OFFSET)
         local border = clip:CreateTexture(nil, "OVERLAY")
         border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
         border:SetSize(ICON_SIZE + 28, ICON_SIZE + 28)
@@ -258,16 +286,21 @@ local function UpdateRowPositions(row)
         if x < -step then
             x = x + row.totalIcons * step
         end
-        ic.tex:SetPoint("LEFT", row.clip, "LEFT", x, (STRIP_H - ICON_SIZE)/2)
+        local texX = x + ((ICON_SIZE - ICON_IMAGE_SIZE) / 2)
+        ic.tex:SetPoint("LEFT", row.clip, "LEFT", texX, ICON_Y_OFFSET)
         if ic.border then
-            ic.border:SetPoint("CENTER", ic.tex, "CENTER", 0, 0)
+            ic.border:SetPoint("CENTER", ic.tex, "CENTER", 0, -1)
         end
 
         local logIdx = ((i - 1) % row.totalIcons) + 1
         local src = row.allIcons[logIdx]
         ic.tex:SetTexture(src and src.tex or "Interface\\Icons\\INV_Misc_QuestionMark")
         ic.tex:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
-        ic.tex:SetVertexColor(1, 1, 1, 1)
+        local alpha = GetEdgeFadeAlpha(x + (ICON_SIZE / 2))
+        ic.tex:SetVertexColor(1, 1, 1, alpha)
+        if ic.border then
+            ic.border:SetAlpha(alpha)
+        end
     end
     if row.selectedOverlay then
         row.selectedOverlay:Hide()
@@ -387,9 +420,11 @@ local function BuildFrame()
     RustcoreTheme.ApplyFrameSkin(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -22)
-    title:SetFont(TITLE_FONT_PATH, 30, "")
+    title:SetPoint("TOP", f, "TOP", 0, -28)
+    title:SetFont(TITLE_FONT_PATH, 22, "")
     title:SetTextColor(unpack(TITLE_COLOR))
+    title:SetShadowColor(0, 0, 0, 1)
+    title:SetShadowOffset(2.5, -2.5)
     title:SetText("Death Penalty")
     f.title = title
 
@@ -397,18 +432,18 @@ local function BuildFrame()
     bgShade:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -18)
     bgShade:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -18, 18)
     bgShade:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-    bgShade:SetVertexColor(0, 0, 0, 0.4)
+    bgShade:SetVertexColor(0, 0, 0, 0.10)
 
     local subLabel = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    subLabel:SetPoint("TOP", title, "BOTTOM", 0, -6)
+    subLabel:SetPoint("TOP", title, "BOTTOM", 0, -10)
     subLabel:SetText("")
     ApplyBodyFont(subLabel, 18)
     f.subLabel = subLabel
 
     -- Container for spin rows, anchored below subLabel
     local rowContainer = CreateFrame("Frame", nil, f)
-    rowContainer:SetPoint("TOPLEFT", f, "TOPLEFT", 28, -70)
-    rowContainer:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -70)
+    rowContainer:SetPoint("TOPLEFT", f, "TOPLEFT", 28, -82)
+    rowContainer:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -82)
     f.rowContainer = rowContainer
 
     local minimizeBtn = CreateFrame("Button", nil, f)
@@ -528,12 +563,14 @@ PopulateSpinUI = function(items, skipAnim)
             bg:SetVertexColor(0, 0, 0, 1)
 
             local icon = cell:CreateTexture(nil, "ARTWORK")
-            icon:SetAllPoints(cell)
+            icon:SetSize(ICON_IMAGE_SIZE, ICON_IMAGE_SIZE)
+            icon:SetPoint("CENTER", cell, "CENTER", 0, 0)
             icon:SetTexture(GetDisplayTexture(item))
             icon:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
 
             local redOverlay = cell:CreateTexture(nil, "OVERLAY")
-            redOverlay:SetAllPoints(cell)
+            redOverlay:SetSize(ICON_IMAGE_SIZE, ICON_IMAGE_SIZE)
+            redOverlay:SetPoint("CENTER", cell, "CENTER", 0, 0)
             redOverlay:SetTexture(GetDisplayTexture(item))
             redOverlay:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
             redOverlay:SetVertexColor(1, 0.15, 0.15, 1)
@@ -554,6 +591,7 @@ PopulateSpinUI = function(items, skipAnim)
         f.deleteBtn:ClearAllPoints()
         f.deleteBtn:SetPoint("BOTTOM", f, "BOTTOM", 0, 36)
         RefreshButtonState()
+        RunSpinCompleteCallback(4)
         return
     end
 
@@ -622,6 +660,7 @@ PopulateSpinUI = function(items, skipAnim)
     else
         f.spinTicker = StartSpinAnimations(spinRows, function()
             RefreshButtonState()
+            RunSpinCompleteCallback()
         end)
     end
 end
@@ -825,6 +864,10 @@ function RustcoreUI.ShowDeletionFrame(items, snapshotItems)
     PlaySoundFile(Rustcore.GetAssetPath("Metalsound.wav"), "Master")
     RestoreFrameVisualState()
     RefreshButtonState()
+end
+
+function RustcoreUI.SetSpinCompleteCallback(callback)
+    spinCompleteCallback = callback
 end
 
 local function FindItemInBagsByLink(link)

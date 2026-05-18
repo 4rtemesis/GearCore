@@ -16,10 +16,10 @@ local DIFF_DESCS  = {
 
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
 local DEFAULT_TITLE_TEXT = "Rustcore Options"
-local COMBAT_TITLE_TEXT = "Settings are locked while in comba."
-local TITLE_FONT_PATH = Rustcore.GetAssetPath("Font/RUSTED PERSONAL USE.ttf")
+local COMBAT_TITLE_TEXT = "Settings are locked\nwhile in combat."
+local TITLE_FONT_PATH = Rustcore.GetAssetPath("Font/HVD_Peace.ttf")
 local BODY_FONT_PATH = Rustcore.GetAssetPath("Font/BPpong.otf")
-local TITLE_COLOR = { 0.82, 0.16, 0.16 }
+local TITLE_COLOR = { 0.90, 0.12, 0.12 }
 
 local function ApplyBodyFont(fontString, size)
     if not fontString then return end
@@ -114,8 +114,10 @@ local function RefreshCombatLockState(frame)
         frame.cbSelfFound,
         frame.cbWeapon,
         frame.cbRepair,
+        frame.cbPvpDeathProtection,
         frame.cbMinimap,
         frame.cbBroadcast,
+        frame.cbGuildMessage,
         frame.cbShowPopup,
         frame.cbShowWarning,
     }
@@ -145,7 +147,7 @@ end
 
 local function BuildOptionsFrame()
     local f = CreateFrame("Frame", "RustcoreOptionsFrame", UIParent, backdropTemplate)
-    f:SetSize(580, 516)
+    f:SetSize(580, 584)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetMovable(true)
@@ -156,6 +158,8 @@ local function BuildOptionsFrame()
     title:SetPoint("TOP", f, "TOP", 0, -32)
     title:SetFont(TITLE_FONT_PATH, 30, "")
     title:SetTextColor(unpack(TITLE_COLOR))
+    title:SetShadowColor(0, 0, 0, 1)
+    title:SetShadowOffset(2.5, -2.5)
     title:SetText(DEFAULT_TITLE_TEXT)
     f.titleText = title
 
@@ -163,7 +167,7 @@ local function BuildOptionsFrame()
     bgShade:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -18)
     bgShade:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -18, 18)
     bgShade:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-    bgShade:SetVertexColor(0, 0, 0, 0.4)
+    bgShade:SetVertexColor(0, 0, 0, 0.10)
 
     local dragHandle = CreateFrame("Frame", nil, f)
     dragHandle:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -10)
@@ -181,7 +185,7 @@ local function BuildOptionsFrame()
     RustcoreTheme.SkinExitButton(closeBtn)
 
     local leftColX = 34
-    local rightColX = 294
+    local rightColX = 290
 
     -- ── Difficulty section ────────────────────────────────────────────────────
     local diffHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -282,14 +286,13 @@ local function BuildOptionsFrame()
         "Allows repair at merchants. By default repair is always blocked.",
         cbWeapon, -8, "allowRepair")
 
-    local excNote = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    excNote:SetPoint("TOPLEFT", cbRepair, "BOTTOMLEFT", 30, -4)
-    excNote:SetTextColor(0.7, 0.7, 0.7)
-    excNote:SetText("Applies to all difficulty modes.")
-    ApplyBodyFont(excNote, 15)
+    local cbPvpDeathProtection = MakeCheckbox(f,
+        "Ignore PVP Death",
+        "If an enemy player damages you at any point during a combat, dying in the same combat will not mark any items for deletion.",
+        cbRepair, -8, "ignoreDeathAfterEnemyPlayerDamage")
 
     local uiHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    uiHeader:SetPoint("TOPLEFT", sfHeader, "TOPLEFT", rightColX - leftColX, 0)
+    uiHeader:SetPoint("TOPLEFT", cbPvpDeathProtection, "BOTTOMLEFT", 0, -16)
     uiHeader:SetText("Interface")
     ApplyBodyFont(uiHeader, 20)
 
@@ -300,19 +303,24 @@ local function BuildOptionsFrame()
 
     -- ── Death broadcast section ───────────────────────────────────────────────
     local bcHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    bcHeader:SetPoint("TOPLEFT", cbMinimap, "BOTTOMLEFT", 0, -16)
+    bcHeader:SetPoint("TOPLEFT", sfHeader, "TOPLEFT", rightColX - leftColX, 0)
     bcHeader:SetText("Death Broadcast")
     ApplyBodyFont(bcHeader, 20)
 
     local cbBroadcast = MakeCheckbox(f,
         "Broadcast My Death",
-        "Announces your death and the item you lost to other Rustcore users\nvia a shared addon channel.",
+        "Announces your death and the item you lost to other Rustcore users.",
         bcHeader, -8, "broadcastDeaths")
 
+    local cbGuildMessage = MakeCheckbox(f,
+        "Guild Message",
+        "Send a message in guild chat when you die with the item you lost.",
+        cbBroadcast, -8, "guildDeathMessage")
+
     local cbShowPopup = MakeCheckbox(f,
-        "Show Death Popup",
-        "Display a popup notification when another Rustcore player dies.",
-        cbBroadcast, -8, "showDeathPopup")
+        "Show Death Messages",
+        "Display a chat message when another Rustcore player dies.",
+        cbGuildMessage, -8, "showDeathPopup")
 
     local cbShowWarning = MakeCheckbox(f,
         "Show Center Warning",
@@ -335,8 +343,10 @@ local function BuildOptionsFrame()
     f.cbSelfFound   = cbSelfFound
     f.cbWeapon      = cbWeapon
     f.cbRepair      = cbRepair
+    f.cbPvpDeathProtection = cbPvpDeathProtection
     f.cbMinimap     = cbMinimap
     f.cbBroadcast   = cbBroadcast
+    f.cbGuildMessage= cbGuildMessage
     f.cbShowPopup   = cbShowPopup
     f.cbShowWarning = cbShowWarning
 
@@ -349,8 +359,10 @@ local function BuildOptionsFrame()
         self.cbSelfFound:Refresh()
         self.cbWeapon:Refresh()
         self.cbRepair:Refresh()
+        self.cbPvpDeathProtection:Refresh()
         self.cbMinimap:Refresh()
         self.cbBroadcast:Refresh()
+        self.cbGuildMessage:Refresh()
         self.cbShowPopup:Refresh()
         self.cbShowWarning:Refresh()
 

@@ -1,9 +1,9 @@
 ## Interface: 11508
-## Title: Rustcore Era
-## Notes: Hardcore gear loss on death for WoW Classic Era
+## Title: Rustcore
+## Notes: Disabled repair and deletes items on death.
 ## Author: Rustcore
-## Version: 1.0
-## IconTexture: Interface\AddOns\RustcoreEra\RCicon.png
+## Version: 1.11
+## IconTexture: Interface\AddOns\Rustcore\RCicon.png
 ## SavedVariables: RustcoreDB
 
 Rustcore.lua
