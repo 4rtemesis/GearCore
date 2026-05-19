@@ -188,7 +188,7 @@ function RustcoreTheme.SkinExitButton(button)
         end
     end)
     button:HookScript("OnClick", function()
-        PlaySoundFile(Rustcore.GetAssetPath("Exitsound.wav"), "Master")
+        PlaySoundFile(Rustcore.GetAssetPath("Audio/Exitsound.wav"), "Master")
     end)
     button:HookScript("OnLeave", function(self)
         if self.rustcoreThemeExitHover then
@@ -230,7 +230,7 @@ function RustcoreTheme.SkinMinimizeButton(button)
         end
     end)
     button:HookScript("OnClick", function()
-        PlaySoundFile(Rustcore.GetAssetPath("Exitsound.wav"), "Master")
+        PlaySoundFile(Rustcore.GetAssetPath("Audio/Exitsound.wav"), "Master")
     end)
     button:HookScript("OnLeave", function(self)
         if self.rustcoreThemeMinimizeHover then

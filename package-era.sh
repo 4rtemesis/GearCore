@@ -2,10 +2,10 @@
 
 set -euo pipefail
 
-addon_name="RustcoreEra"
+addon_name="Rustcore"
 version="${1:-$(date +%Y%m%d-%H%M%S)}"
 dist_dir="dist"
-source_dir="${addon_name}"
+source_dir="RustcoreEra"
 stage_dir="${dist_dir}/${addon_name}"
 zip_path="${dist_dir}/${addon_name}-${version}.zip"
 
@@ -14,20 +14,15 @@ rm -rf "${stage_dir}"
 mkdir -p "${stage_dir}"
 
 files=(
-  "RustcoreEra.toc"
   "Rustcore.lua"
   "RustcoreBroadcast.lua"
   "RustcoreTheme.lua"
   "RustcoreOptions.lua"
   "RustcoreUI.lua"
   "RCicon.png"
-  "Breaksound.flac"
-  "difficultysound.wav"
-  "Exitsound.wav"
-  "Metalsound.wav"
-  "Spinsound.wav"
-  "ticksound2.wav"
 )
+
+cp "${source_dir}/RustcoreEra.toc" "${stage_dir}/Rustcore.toc"
 
 for file in "${files[@]}"; do
   cp "${source_dir}/${file}" "${stage_dir}/"
@@ -35,6 +30,7 @@ done
 
 cp -r "${source_dir}/UI" "${stage_dir}/"
 cp -r "${source_dir}/Font" "${stage_dir}/"
+cp -r "${source_dir}/Audio" "${stage_dir}/"
 
 rm -f "${zip_path}"
 

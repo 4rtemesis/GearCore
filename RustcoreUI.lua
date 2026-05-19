@@ -29,7 +29,7 @@ local LinksMatch
 local spinCompleteCallback
 
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
-local TITLE_FONT_PATH = Rustcore.GetAssetPath("Font/HVD_Peace.ttf")
+local TITLE_FONT_PATH = Rustcore.GetAssetPath("Font/Ynsect Moksha.ttf")
 local BODY_FONT_PATH = Rustcore.GetAssetPath("Font/BPpong.otf")
 local TITLE_COLOR = { 0.90, 0.12, 0.12 }
 local ICON_TEX_INSET = 0.10
@@ -372,7 +372,7 @@ local function StartSpinAnimations(spinRows, onAllDone)
         for _, row in ipairs(spinRows) do
             if row.spinning and not row.soundPlayed and now >= (row.startTime + 0.5) then
                 row.soundPlayed = true
-                PlaySoundFile(Rustcore.GetAssetPath("Spinsound.wav"), "Master")
+                PlaySoundFile(Rustcore.GetAssetPath("Audio/Spinsound.wav"), "Master")
             end
             if row.spinning and not row.done then
                 local elapsed = now - row.startTime
@@ -861,7 +861,7 @@ function RustcoreUI.ShowDeletionFrame(items, snapshotItems)
     end
 
     PopulateSpinUI(pendingItems)
-    PlaySoundFile(Rustcore.GetAssetPath("Metalsound.wav"), "Master")
+    PlaySoundFile(Rustcore.GetAssetPath("Audio/Metalsound.wav"), "Master")
     RestoreFrameVisualState()
     RefreshButtonState()
 end
@@ -1173,7 +1173,7 @@ function RustcoreUI.ExecuteDeletion()
         return
     end
 
-    PlaySoundFile(Rustcore.GetAssetPath("Breaksound.flac"), "Master")
+    PlaySoundFile(Rustcore.GetAssetPath("Audio/Breaksound.flac"), "Master")
 
     local item = pendingItems[1]
     local frameHiddenForProcessing = false

@@ -17,7 +17,7 @@ local DIFF_DESCS  = {
 local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
 local DEFAULT_TITLE_TEXT = "Rustcore Options"
 local COMBAT_TITLE_TEXT = "Settings are locked\nwhile in combat."
-local TITLE_FONT_PATH = Rustcore.GetAssetPath("Font/HVD_Peace.ttf")
+local TITLE_FONT_PATH = Rustcore.GetAssetPath("Font/Ynsect Moksha.ttf")
 local BODY_FONT_PATH = Rustcore.GetAssetPath("Font/BPpong.otf")
 local TITLE_COLOR = { 0.90, 0.12, 0.12 }
 
@@ -56,7 +56,7 @@ local function ApplyDifficultyValue(slider, diffDesc, value)
         end
         return
     end
-    PlaySoundFile(Rustcore.GetAssetPath("difficultysound.wav"), "Master")
+    PlaySoundFile(Rustcore.GetAssetPath("Audio/difficultysound.wav"), "Master")
     local txt = _G[slider:GetName().."Text"]
     if txt then txt:SetText(DIFF_LABELS[v]) end
     diffDesc:SetText(DIFF_DESCS[v])
@@ -90,7 +90,7 @@ local function MakeCheckbox(parent, labelText, tooltipText, anchorTo, yOff, sett
     end
 
     cb:SetScript("OnClick", function(self)
-        PlaySoundFile(Rustcore.GetAssetPath("ticksound2.wav"), "Master")
+        PlaySoundFile(Rustcore.GetAssetPath("Audio/ticksound2.wav"), "Master")
         if not Rustcore.SetSetting(settingKey, self:GetChecked() and true or false) then
             cb:Refresh()
         end
@@ -396,7 +396,7 @@ function RustcoreOptions.Toggle()
     if optFrame:IsShown() then
         optFrame:Hide()
     else
-        PlaySoundFile(Rustcore.GetAssetPath("Metalsound.wav"), "Master")
+        PlaySoundFile(Rustcore.GetAssetPath("Audio/Metalsound.wav"), "Master")
         optFrame:Show()
     end
 end
