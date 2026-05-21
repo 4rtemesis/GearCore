@@ -252,6 +252,7 @@ local function QueueGuildDeathMessage(items, deathSource)
 
     pendingGuildDeathMessage = {
         itemLink = bestItem.link,
+        count = #items,
         deathSource = (deathSource and deathSource ~= "") and deathSource or "Unknown",
     }
 end
@@ -268,7 +269,9 @@ function Rustcore.FlushPendingGuildDeathMessage()
     end
 
     SendChatMessage(
-        "[Rustcore] My " .. pendingGuildDeathMessage.itemLink .. " was broken by " .. pendingGuildDeathMessage.deathSource,
+        "[Rustcore] " .. pendingGuildDeathMessage.deathSource
+            .. " broke " .. pendingGuildDeathMessage.count
+            .. " of my items, including: " .. pendingGuildDeathMessage.itemLink,
         "GUILD"
     )
     pendingGuildDeathMessage = nil

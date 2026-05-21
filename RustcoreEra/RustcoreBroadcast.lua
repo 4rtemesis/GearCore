@@ -119,7 +119,7 @@ local function Display(d)
     end
 
     if Rustcore.GetSetting("showDeathWarning") then
-        local plain = d.name .. " just lost " .. countStr .. " items, including " .. itemStr .. "."
+        local plain = d.name .. " just lost " .. countStr .. ", including: " .. itemStr .. "."
         RaidNotice_AddMessage(RaidWarningFrame, plain, ChatTypeInfo["RAID_WARNING"])
     end
 end

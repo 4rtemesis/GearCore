@@ -13,6 +13,7 @@ local processingTicker
 local statusUpdateTicker
 local savedBtnX, savedBtnY
 local frameBottomAnchorX, frameBottomAnchorY
+local minimizedDeleteBtnAnchorX, minimizedDeleteBtnAnchorY
 local activeSpinIcons
 local GetDeletePopupFrame
 local FinishQueue
@@ -33,7 +34,9 @@ local TITLE_FONT_PATH = Rustcore.GetAssetPath("Font/Ynsect Moksha.ttf")
 local BODY_FONT_PATH = Rustcore.GetAssetPath("Font/BPpong.otf")
 local TITLE_COLOR = { 0.90, 0.12, 0.12 }
 local ICON_TEX_INSET = 0.10
-local ICON_IMAGE_SIZE = 36
+local ICON_IMAGE_SIZE = 32
+local ICON_BORDER_SIZE = 60
+local COMPACT_ICON_BG_SIZE = ICON_IMAGE_SIZE - 2
 local ICON_Y_OFFSET = 0
 local COMPACT_CELL_GAP = 6
 local COMPACT_FRAME_MIN_WIDTH = 280
@@ -63,30 +66,29 @@ local SLOT_NAMES = {
 }
 local ALL_SLOTS = { 1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17,18 }
 
-local ICON_SIZE   = 40
-local ICON_GAP    = 4
-local STRIP_W     = 400   -- visible strip width
+local ICON_SIZE   = 38
+local ICON_GAP    = 5
+local WHEEL_FRAME_STRIP_W = (40 * 9) + (ICON_GAP * 8) - 8
+local STRIP_W     = (ICON_SIZE * 9) + (ICON_GAP * 8)   -- visible strip width
 local STRIP_H     = ICON_SIZE
-local ARROW_H     = 18
 local ROW_SPACING = 10    -- vertical gap between rows
 local FADE_W      = 88    -- width of each fade gradient on edges
 local MAX_ROWS_PER_COLUMN = 9
 local COLUMN_SPACING = 20
 local CENTER_ICON_OFFSET_X = 0
-
-local function GetEdgeFadeAlpha(centerX)
-    local leftAlpha = 1
-    local rightAlpha = 1
-
-    if centerX < FADE_W then
-        leftAlpha = math.max(0, math.min(1, centerX / FADE_W))
-    end
-    if centerX > (STRIP_W - FADE_W) then
-        rightAlpha = math.max(0, math.min(1, (STRIP_W - centerX) / FADE_W))
-    end
-
-    return math.max(0, math.min(1, math.min(leftAlpha, rightAlpha)))
-end
+local WHEEL_FRAME_TEXTURE = "Wheel frame5 copy.tga"
+local function RoundPixel(value) return math.floor(value + 0.5) end
+local WHEEL_FRAME_SOURCE_W = 1899
+local WHEEL_FRAME_SOURCE_H = 330
+local WHEEL_FRAME_SOURCE_PAD_LEFT = 45
+local WHEEL_FRAME_SOURCE_PAD_RIGHT = 45
+local WHEEL_FRAME_PAD_TOP = 104
+local WHEEL_FRAME_SCALE = WHEEL_FRAME_STRIP_W / (WHEEL_FRAME_SOURCE_W - WHEEL_FRAME_SOURCE_PAD_LEFT - WHEEL_FRAME_SOURCE_PAD_RIGHT)
+local WHEEL_FRAME_W = RoundPixel(WHEEL_FRAME_SOURCE_W * WHEEL_FRAME_SCALE)
+local WHEEL_FRAME_H = RoundPixel(WHEEL_FRAME_SOURCE_H * WHEEL_FRAME_SCALE)
+local WHEEL_FRAME_ICON_X = RoundPixel((WHEEL_FRAME_SOURCE_PAD_LEFT * WHEEL_FRAME_SCALE) + ((WHEEL_FRAME_STRIP_W - STRIP_W) / 2))
+local WHEEL_FRAME_ICON_Y = RoundPixel(WHEEL_FRAME_PAD_TOP * WHEEL_FRAME_SCALE) + 2
+local WHEEL_FRAME_TOP_OFFSET = -88
 
 local function RunSpinCompleteCallback(delay)
     if not spinCompleteCallback then return end
@@ -167,35 +169,33 @@ end
 -- ── Spin row construction ─────────────────────────────────────────────────────
 
 -- Each pending item gets one spin row. The row contains:
+--   • a wheel frame texture behind the animation
 --   • a clip frame (masks the strip to STRIP_W wide)
 --   • inside: many icon textures arranged left-to-right
---   • an arrow pointing at the center
---   • edge fade overlays
 
 local function BuildSpinRow(parent, xOffset, yOffset, targetSlot, targetTex, allIcons, chosenIndex)
     local step = ICON_SIZE + ICON_GAP
 
-    -- Container for the whole row (arrow + strip)
+    -- Container for the whole row (wheel frame + strip)
     local row = CreateFrame("Frame", nil, parent)
-    row:SetSize(STRIP_W, STRIP_H + ARROW_H + 6)
+    row:SetSize(WHEEL_FRAME_W, WHEEL_FRAME_H)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", xOffset, yOffset)
 
-    -- Arrow pointing down at center
-    local arrow = row:CreateTexture(nil, "OVERLAY")
-    arrow:SetSize(ARROW_H, ARROW_H)
-    arrow:SetPoint("TOP", row, "TOP", 0, -10)
-    arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
+    local wheelFrame = row:CreateTexture(nil, "BACKGROUND")
+    wheelFrame:SetAllPoints(row)
+    wheelFrame:SetTexture(Rustcore.GetAssetPath("UI/" .. WHEEL_FRAME_TEXTURE))
+    wheelFrame:SetTexCoord(0, 1, 0, 1)
 
     -- Clip frame (hides icons outside the strip)
     local clip = CreateFrame("Frame", nil, row)
     clip:SetSize(STRIP_W, STRIP_H)
-    clip:SetPoint("TOP", row, "TOP", 0, -(ARROW_H + 6))
+    clip:SetPoint("TOPLEFT", row, "TOPLEFT", WHEEL_FRAME_ICON_X, -WHEEL_FRAME_ICON_Y)
     clip:SetClipsChildren(true)
 
     local clipBg = clip:CreateTexture(nil, "BACKGROUND")
     clipBg:SetAllPoints(clip)
     clipBg:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-    clipBg:SetVertexColor(0, 0, 0, 1)
+    clipBg:SetVertexColor(0, 0, 0, 0)
 
     local selectedOverlay = clip:CreateTexture(nil, "OVERLAY")
     selectedOverlay:SetSize(ICON_IMAGE_SIZE, ICON_IMAGE_SIZE)
@@ -205,26 +205,13 @@ local function BuildSpinRow(parent, xOffset, yOffset, targetSlot, targetTex, all
     selectedOverlay:Hide()
 
     local selectedOverlayBorder = CreateFrame("Frame", nil, clip)
-    selectedOverlayBorder:SetSize(ICON_SIZE + 28, ICON_SIZE + 28)
-    selectedOverlayBorder:SetPoint("CENTER", selectedOverlay, "CENTER", 0, -1)
+    selectedOverlayBorder:SetSize(ICON_BORDER_SIZE, ICON_BORDER_SIZE)
+    selectedOverlayBorder:SetPoint("CENTER", selectedOverlay, "CENTER", 0, 0)
     selectedOverlayBorder:SetFrameLevel(clip:GetFrameLevel() + 8)
     selectedOverlayBorder.tex = selectedOverlayBorder:CreateTexture(nil, "OVERLAY")
     selectedOverlayBorder.tex:SetAllPoints(selectedOverlayBorder)
     selectedOverlayBorder.tex:SetTexture("Interface\\Buttons\\UI-Quickslot2")
     selectedOverlayBorder:Hide()
-
-    -- Left/right fade overlays (drawn on top of icons)
-    local fadeL = clip:CreateTexture(nil, "OVERLAY")
-    fadeL:SetSize(FADE_W, STRIP_H)
-    fadeL:SetPoint("LEFT", clip, "LEFT", 0, 0)
-    fadeL:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-    SetTexGradientAlpha(fadeL, "HORIZONTAL", 0,0,0,0.98, 0,0,0,0)
-
-    local fadeR = clip:CreateTexture(nil, "OVERLAY")
-    fadeR:SetSize(FADE_W, STRIP_H)
-    fadeR:SetPoint("RIGHT", clip, "RIGHT", 0, 0)
-    fadeR:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-    SetTexGradientAlpha(fadeR, "HORIZONTAL", 0,0,0,0, 0,0,0,0.98)
 
     -- Build icon pool inside clip: enough to wrap seamlessly
     local totalIcons = #allIcons
@@ -240,10 +227,25 @@ local function BuildSpinRow(parent, xOffset, yOffset, targetSlot, targetTex, all
         ic:SetPoint("LEFT", clip, "LEFT", (i-1)*step + ((ICON_SIZE - ICON_IMAGE_SIZE) / 2), ICON_Y_OFFSET)
         local border = clip:CreateTexture(nil, "OVERLAY")
         border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
-        border:SetSize(ICON_SIZE + 28, ICON_SIZE + 28)
-        border:SetPoint("CENTER", ic, "CENTER", 0, -1)
+        border:SetSize(ICON_BORDER_SIZE, ICON_BORDER_SIZE)
+        border:SetPoint("CENTER", ic, "CENTER", 0, 0)
         iconFrames[i] = { tex = ic, border = border, srcIdx = ((i-1) % totalIcons) + 1 }
     end
+
+    -- Edge shadows are created after icons/borders so they sit above both layers.
+    local fadeL = clip:CreateTexture(nil, "OVERLAY")
+    if fadeL.SetDrawLayer then fadeL:SetDrawLayer("OVERLAY", 7) end
+    fadeL:SetSize(FADE_W, STRIP_H)
+    fadeL:SetPoint("LEFT", clip, "LEFT", 0, 0)
+    fadeL:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
+    SetTexGradientAlpha(fadeL, "HORIZONTAL", 0,0,0,0.98, 0,0,0,0)
+
+    local fadeR = clip:CreateTexture(nil, "OVERLAY")
+    if fadeR.SetDrawLayer then fadeR:SetDrawLayer("OVERLAY", 7) end
+    fadeR:SetSize(FADE_W, STRIP_H)
+    fadeR:SetPoint("RIGHT", clip, "RIGHT", 0, 0)
+    fadeR:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
+    SetTexGradientAlpha(fadeR, "HORIZONTAL", 0,0,0,0, 0,0,0,0.98)
 
     row.clip        = clip
     row.selectedOverlay = selectedOverlay
@@ -289,17 +291,16 @@ local function UpdateRowPositions(row)
         local texX = x + ((ICON_SIZE - ICON_IMAGE_SIZE) / 2)
         ic.tex:SetPoint("LEFT", row.clip, "LEFT", texX, ICON_Y_OFFSET)
         if ic.border then
-            ic.border:SetPoint("CENTER", ic.tex, "CENTER", 0, -1)
+            ic.border:SetPoint("CENTER", ic.tex, "CENTER", 0, 0)
         end
 
         local logIdx = ((i - 1) % row.totalIcons) + 1
         local src = row.allIcons[logIdx]
         ic.tex:SetTexture(src and src.tex or "Interface\\Icons\\INV_Misc_QuestionMark")
         ic.tex:SetTexCoord(ICON_TEX_INSET, 1 - ICON_TEX_INSET, ICON_TEX_INSET, 1 - ICON_TEX_INSET)
-        local alpha = GetEdgeFadeAlpha(x + (ICON_SIZE / 2))
-        ic.tex:SetVertexColor(1, 1, 1, alpha)
+        ic.tex:SetVertexColor(1, 1, 1, 1)
         if ic.border then
-            ic.border:SetAlpha(alpha)
+            ic.border:SetAlpha(1)
         end
     end
     if row.selectedOverlay then
@@ -451,6 +452,9 @@ local function BuildFrame()
     minimizeBtn:SetFrameLevel(f:GetFrameLevel() + 10)
     minimizeBtn:SetScript("OnClick", function(self)
         local parent = self:GetParent()
+        if parent.deleteBtn then
+            minimizedDeleteBtnAnchorX, minimizedDeleteBtnAnchorY = parent.deleteBtn:GetCenter()
+        end
         parent.isMinimized = not parent.isMinimized
         if #pendingItems > 0 then
             PopulateSpinUI(pendingItems, true)
@@ -536,7 +540,10 @@ PopulateSpinUI = function(items, skipAnim)
 
         f:SetSize(frameW, frameH)
         f:ClearAllPoints()
-        if frameBottomAnchorX then
+        if minimizedDeleteBtnAnchorX and minimizedDeleteBtnAnchorY then
+            local _, buttonH = f.deleteBtn:GetSize()
+            f:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", minimizedDeleteBtnAnchorX, minimizedDeleteBtnAnchorY - 36 - (buttonH / 2))
+        elseif frameBottomAnchorX then
             f:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", frameBottomAnchorX, frameBottomAnchorY)
         else
             f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
@@ -558,7 +565,8 @@ PopulateSpinUI = function(items, skipAnim)
             cell:SetPoint("TOPLEFT", f.rowContainer, "TOPLEFT", xOff, yOff)
 
             local bg = cell:CreateTexture(nil, "BACKGROUND")
-            bg:SetAllPoints(cell)
+            bg:SetSize(COMPACT_ICON_BG_SIZE, COMPACT_ICON_BG_SIZE)
+            bg:SetPoint("CENTER", cell, "CENTER", 0, 0)
             bg:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
             bg:SetVertexColor(0, 0, 0, 1)
 
@@ -577,8 +585,8 @@ PopulateSpinUI = function(items, skipAnim)
             redOverlay:SetShown(i == 1)
 
             local border = CreateFrame("Frame", nil, cell)
-            border:SetSize(ICON_SIZE + 28, ICON_SIZE + 28)
-            border:SetPoint("CENTER", cell, "CENTER", 0, -1)
+            border:SetSize(ICON_BORDER_SIZE, ICON_BORDER_SIZE)
+            border:SetPoint("CENTER", cell, "CENTER", 0, 0)
             border:SetFrameLevel(cell:GetFrameLevel() + 4)
             border.tex = border:CreateTexture(nil, "OVERLAY")
             border.tex:SetAllPoints(border)
@@ -598,26 +606,29 @@ PopulateSpinUI = function(items, skipAnim)
     local allIcons = activeSpinIcons or GetEquippedIconList()
     if #allIcons == 0 then return end
 
-    local rowH   = STRIP_H + ARROW_H + 6
+    local rowH   = WHEEL_FRAME_H
     local itemCount = #items
     local columnCount = math.max(1, math.ceil(itemCount / MAX_ROWS_PER_COLUMN))
     local rowsPerColumn = math.ceil(itemCount / columnCount)
     local rowsInTallestColumn = math.min(itemCount, rowsPerColumn)
     local totalH = rowsInTallestColumn * (rowH + ROW_SPACING) - ROW_SPACING
-    local totalW = columnCount * STRIP_W + (columnCount - 1) * COLUMN_SPACING
-    local frameH = totalH + 170
+    local totalW = columnCount * WHEEL_FRAME_W + (columnCount - 1) * COLUMN_SPACING
+    local frameH = totalH + 190
 
     f:SetSize(totalW + 60, frameH)
     f:ClearAllPoints()
-    if frameBottomAnchorX then
+    if minimizedDeleteBtnAnchorX and minimizedDeleteBtnAnchorY then
+        local _, buttonH = f.deleteBtn:GetSize()
+        f:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", minimizedDeleteBtnAnchorX, minimizedDeleteBtnAnchorY - 36 - (buttonH / 2))
+    elseif frameBottomAnchorX then
         f:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", frameBottomAnchorX, frameBottomAnchorY)
     else
         f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     end
 
     f.rowContainer:ClearAllPoints()
-    f.rowContainer:SetPoint("TOPLEFT", f, "TOPLEFT", 28, -70)
-    f.rowContainer:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -70)
+    f.rowContainer:SetPoint("TOPLEFT", f, "TOPLEFT", 28, WHEEL_FRAME_TOP_OFFSET)
+    f.rowContainer:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, WHEEL_FRAME_TOP_OFFSET)
     f.rowContainer:SetWidth(totalW)
     f.rowContainer:SetHeight(totalH)
 
@@ -638,7 +649,7 @@ PopulateSpinUI = function(items, skipAnim)
 
         local columnIndex = math.floor((i - 1) / rowsPerColumn)
         local rowIndex = (i - 1) % rowsPerColumn
-        local xOff = columnIndex * (STRIP_W + COLUMN_SPACING)
+        local xOff = columnIndex * (WHEEL_FRAME_W + COLUMN_SPACING)
         local yOff = -(rowIndex * (rowH + ROW_SPACING))
         local tex  = GetDisplayTexture(item)
         local row  = BuildSpinRow(f.rowContainer, xOff, yOff, item.slot, tex, allIcons, chosenIdx)
@@ -836,6 +847,7 @@ function RustcoreUI.ShowDeletionFrame(items, snapshotItems)
     end
 
     frameBottomAnchorX, frameBottomAnchorY = nil, nil  -- fresh death: re-center
+    minimizedDeleteBtnAnchorX, minimizedDeleteBtnAnchorY = nil, nil
     wipe(pendingItems)
     activeSpinIcons = reuseSpinIcons and activeSpinIcons or BuildIconListFromItems(snapshotItems or sourceItems)
     if #activeSpinIcons == 0 then
