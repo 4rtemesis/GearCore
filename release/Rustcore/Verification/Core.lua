@@ -13,6 +13,20 @@ local V = RustcoreVerification
 
 V.SCHEMA_VERSION = 1
 
+-- The one distinction everything else hangs off:
+--
+--   FAILED      Rustcore directly observed a challenge rule being broken. It
+--               watched the repair happen, watched the item arrive from a trade.
+--   UNVERIFIED  the evidence is missing, thin or odd, but no violation was ever
+--               observed. Inference lands here, however strong.
+--
+-- So an unexplained durability increase, an implausible amount of gold, and a
+-- character Rustcore simply was not running for all end at UNVERIFIED, no matter
+-- how many times they repeat. Missing playtime in particular can never reach
+-- FAILED: not being watched is not a violation.
+--
+-- Both are terminal for the certification. The difference is what Rustcore says
+-- about the player, and it is worth keeping honest.
 V.STATUS = {
     VERIFIED   = "VERIFIED",
     WARNING    = "WARNING",

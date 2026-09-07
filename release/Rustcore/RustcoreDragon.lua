@@ -234,15 +234,19 @@ end
 
 -- Plan sections 7 and 15: the local player's dragon is the hardest difficulty
 -- Rustcore can still vouch for, never simply the option that is selected.
--- Verification returns nil when no dragon may be claimed at all. If the
--- verification module is missing entirely the selected preset is used, because
--- blanking a portrait over a load failure is the wrong way to be wrong.
+-- Verification returns nil when no dragon may be claimed at all.
+--
+-- There is deliberately no fallback to the selected preset. The dragon is a
+-- claim about what was verified, so if verification cannot answer -- module
+-- missing, failed to load, no record yet -- the honest result is no dragon.
+-- Showing the chosen difficulty instead would turn a load failure into an
+-- unearned badge, which is the one thing this must never do.
 local function LocalDragonTier()
     local V = RustcoreVerification
     if V and V.Difficulty and V.Difficulty.GetPortraitTier then
         return V.Difficulty.GetPortraitTier()
     end
-    return Rustcore.GetSetting("difficulty") or 1
+    return nil
 end
 
 function RustcoreDragon.RefreshPlayerFrame()

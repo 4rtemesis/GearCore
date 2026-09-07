@@ -295,8 +295,81 @@ function M.Run()
         record.difficulty.currentTier = V.GetCurrentTier()
     end
 
+    M.RepairSealVersionFalsePositive(record)
     M.MaybeGrandfatherExisting(record)
     M.RepairUnexplainedSelfFound(record)
+end
+
+-- Undo an integrity failure that Rustcore caused itself.
+--
+-- Seal version 9 shipped with money figures that were written without
+-- re-stamping the seal. Time.lua re-seals every ten seconds as a side effect of
+-- accruing tracked time, so the mismatch was usually invisible -- but a session
+-- that ended inside one of those windows saved a record whose seal genuinely did
+-- not match its contents, and the next login correctly reported exactly that.
+-- The record was not tampered with; Rustcore failed to seal it.
+--
+-- Scoped to that one seal version on purpose. This is not a general amnesty for
+-- integrity failures -- a real tamper would simply be repaired away, which would
+-- leave the check meaning nothing. Records sealed by any other version are
+-- untouched, and after this runs once the record re-seals at the current version
+-- and is held to the check normally from then on.
+function M.RepairSealVersionFalsePositive(record)
+    if not record then return false end
+    if not record.tamperReason then return false end
+
+    local chain = record.chain
+    if type(chain) ~= "table" then return false end
+
+    -- Scoped to records sealed before the field fingerprint existed, which is
+    -- every record written by a build that could produce this false positive and
+    -- none written afterwards. Once a record has a fingerprint its seal is
+    -- trustworthy, and a failure from that point on is left standing.
+    if chain.sealFields ~= nil then return false end
+
+    -- Only the statuses this bug could have caused are lifted, and only where
+    -- integrity was the stated reason. Anything Rustcore actually observed --
+    -- a violation, a repair, a tracking gap -- was recorded separately and is
+    -- left exactly as it stands.
+    -- What the track is restored *to* follows the evidence still on the record,
+    -- because the status it held before the false failure was not written down.
+    -- A difficulty track with a tier had been certified; one without had not yet
+    -- earned it. Restoring everything to VERIFIED would hand certification to
+    -- characters that were only part-way through qualifying, so those go back to
+    -- UNCERTAIN and the normal qualification path decides as it would have.
+    local restored = false
+    for _, trackName in ipairs({ "difficulty", "selfFound" }) do
+        local track = record[trackName]
+        if type(track) == "table"
+            and track.status == V.STATUS.UNVERIFIED
+            and type(track.statusReason) == "string"
+            and track.statusReason:sub(1, 10) == "integrity:" then
+
+            local wasCertified
+            if trackName == "difficulty" then
+                wasCertified = (tonumber(track.highestVerifiedTier) or 0) >= 1
+            else
+                wasCertified = track.claimed and not track.claimLapsed
+            end
+
+            track.status = wasCertified and V.STATUS.VERIFIED or V.STATUS.UNCERTAIN
+            track.statusReason = nil
+            track.statusAt = nil
+            restored = true
+        end
+    end
+
+    record.tamperReason = nil
+    if restored and V.Integrity and V.Integrity.Append then
+        V.Integrity.Append("SEAL_REPAIR", { from = chain.sealVersion or 0 })
+    end
+    if V.Integrity and V.Integrity.Seal then V.Integrity.Seal(record) end
+
+    if restored then
+        print("|cffff4444Rustcore:|r A verification checksum error caused by an "
+            .. "earlier Rustcore version has been corrected.")
+    end
+    return restored
 end
 
 -- Undo a Self-Found certification that was ended for no reason Rustcore can

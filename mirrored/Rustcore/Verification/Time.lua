@@ -27,14 +27,22 @@ T.POLL_INTERVAL = 300
 -- How often tracked time is accrued. Small enough that a crash loses very
 -- little, large enough to be free.
 T.ACCRUE_INTERVAL = 10
--- Plan section 17: 1 hour of slack per 50 hours played, never less than the
--- five minutes a single crash or Lua error can cost.
+-- How much of a character's life Rustcore is allowed to have missed, as a share
+-- of total /played. Proportional on purpose and with no absolute ceiling: an
+-- hour unwatched means something very different on a 20-hour character than on a
+-- 400-hour one, and a fixed cap would punish exactly the long-lived characters
+-- who have the most history to show for themselves.
+--
+--   up to GAP_RATIO         normal. Nothing is recorded.
+--   GAP_RATIO..GAP_SEVERE   flagged, still certified.
+--   above GAP_SEVERE_RATIO  UNVERIFIED -- too much went unseen to vouch for.
+--
+-- Never FAILED at any size. Not being watched is not a violation.
 T.GAP_RATIO = 0.02
+T.GAP_SEVERE_RATIO = 0.05
+-- A floor under both, so a brand new character is not held to a percentage of
+-- almost nothing: five minutes is about what one crash or Lua error costs.
 T.GAP_MINIMUM = 300
--- Plan section 18: within tolerance is fine, "significantly above" is
--- UNVERIFIED. Between the two the character keeps its portrait but is flagged,
--- which is the reasonable-doubt bias the plan asks for.
-T.GAP_SEVERE_MULTIPLIER = 2
 -- Below this, a measured gap is not recorded at all. Even measuring against one
 -- fixed anchor leaves a residue at every session boundary: the server counts the
 -- seconds between our last accrual tick and the actual disconnect, and a loading
@@ -82,9 +90,19 @@ function T.GetUntrackedSeconds()
 end
 
 -- Plan section 17.
+-- Where a gap stops being normal and starts being worth noting.
 function T.GetAllowedGap(totalPlayed)
     totalPlayed = totalPlayed or T.GetLastServerPlayed()
     return max(T.GAP_MINIMUM, (totalPlayed or 0) * T.GAP_RATIO)
+end
+
+-- Where a gap costs the certification. This is the number the tracking bar is
+-- drawn against, because it is the one the player is actually running out of --
+-- crossing the warning line above only annotates the record.
+function T.GetSevereGap(totalPlayed)
+    totalPlayed = totalPlayed or T.GetLastServerPlayed()
+    return max(T.GAP_MINIMUM * (T.GAP_SEVERE_RATIO / T.GAP_RATIO),
+               (totalPlayed or 0) * T.GAP_SEVERE_RATIO)
 end
 
 -- ── Requesting /played ───────────────────────────────────────────────────────
@@ -220,13 +238,14 @@ end
 
 -- ── Reconciliation ───────────────────────────────────────────────────────────
 
-local function ApplyGapConsequence(state, gap, allowed)
+local function ApplyGapConsequence(state, gap, allowed, severe)
     local band
     if gap <= allowed then
         band = "OK"
-    elseif gap <= allowed * T.GAP_SEVERE_MULTIPLIER then
+    elseif gap < severe then
         band = "WARNING"
     else
+        -- Reaching the severe ratio is enough; it does not have to be exceeded.
         band = "SEVERE"
     end
 
@@ -239,16 +258,19 @@ local function ApplyGapConsequence(state, gap, allowed)
     if state.gapBand == "SEVERE" then return end
     state.gapBand = band
 
-    local detail = ("untracked=%ds allowed=%ds"):format(floor(gap), floor(allowed))
+    -- Worded as time not observed rather than as an accusation: the overwhelming
+    -- cause is Rustcore having been switched off, or a client that crashed.
+    local detail = ("%dm unobserved of %dm allowed"):format(
+        floor(gap / 60), floor(severe / 60))
     if band == "WARNING" then
         V.AddWarning("difficulty", "untrackedPlay", detail)
         V.AddWarning("selfFound", "untrackedPlay", detail)
     else
-        -- Plan section 18: significantly above tolerance means Rustcore cannot
-        -- vouch for the character any more. UNVERIFIED, not FAILED -- untracked
-        -- play is missing evidence, not proof of cheating.
-        V.SetStatus("difficulty", V.STATUS.UNVERIFIED, "untracked playtime: " .. detail)
-        V.SetStatus("selfFound", V.STATUS.UNVERIFIED, "untracked playtime: " .. detail)
+        -- Too much of this character's life happened with nobody watching for a
+        -- certification to mean anything. UNVERIFIED, never FAILED -- there is no
+        -- violation here, only an absence of evidence.
+        V.SetStatus("difficulty", V.STATUS.UNVERIFIED, "playtime not observed: " .. detail)
+        V.SetStatus("selfFound", V.STATUS.UNVERIFIED, "playtime not observed: " .. detail)
     end
 end
 
@@ -303,7 +325,8 @@ local function Reconcile(totalPlayed, levelPlayed)
         state.untrackedSeconds = 0
     end
 
-    ApplyGapConsequence(state, state.untrackedSeconds, T.GetAllowedGap(totalPlayed))
+    ApplyGapConsequence(state, state.untrackedSeconds,
+        T.GetAllowedGap(totalPlayed), T.GetSevereGap(totalPlayed))
 
     if V.Integrity and V.Integrity.Seal then
         V.Integrity.Seal()
@@ -344,6 +367,16 @@ local function OnEvent(_, event, ...)
         -- session is lost from SavedVariables anyway and the resulting gap is
         -- what the tolerance in section 17 exists to absorb.
         Accrue()
+        -- Then seal unconditionally, whatever Accrue decided to do.
+        --
+        -- This is the safety net under the whole scheme: SavedVariables is
+        -- written moments from now, and the seal has to describe what is in it.
+        -- Any module that changes a sealed field and forgets to re-stamp would
+        -- otherwise save a record that fails its own check at the next login,
+        -- and the player would be told their record looks tampered with because
+        -- Rustcore made a bookkeeping mistake. Sealing here makes that class of
+        -- bug impossible to reach the player at all.
+        if V.Integrity and V.Integrity.Seal then V.Integrity.Seal() end
     end
 end
 

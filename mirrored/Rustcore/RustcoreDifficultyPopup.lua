@@ -13,12 +13,16 @@ local WELCOME_TEXT_COLOR = { 1, 0.82, 0 } -- yellow, used for the intro descript
 
 local FRAME_WIDTH, FRAME_HEIGHT = 560, 386
 local PANEL_WIDTH = 150
-local PANEL_HEIGHT = 136
+local PANEL_HEIGHT = 118
 local PANEL_GAP  = 16
 local HEADER_FONT_SIZE = 38
-local HEADER_Y_OFFSET = 51
-local DESCRIPTION_Y_OFFSET = 98
+local HEADER_Y_OFFSET = 36
+local DESCRIPTION_Y_OFFSET = 82
 local BODY_FONT_SIZE = 15
+-- The Self-Found row sits under the panels as a secondary choice, so it is set a
+-- step below the panel descriptions rather than matching them.
+local SELF_FOUND_FONT_SIZE = 13
+local SELF_FOUND_CHECK_SIZE = 20
 local DESATURATE_DIM = 0.55
 local DESATURATE_MIN = 0.18 -- floor so very dark source colors (e.g. Dust's deep red) don't desaturate to near-black
 
@@ -303,7 +307,7 @@ local function BuildFrame()
     note:SetText(WELCOME_NOTE)
 
     local panelRow = CreateFrame("Frame", nil, frame)
-    panelRow:SetPoint("TOP", note, "BOTTOM", 0, 2)
+    panelRow:SetPoint("TOP", note, "BOTTOM", 0, 8)
     panelRow:SetSize(PANEL_WIDTH * 3 + PANEL_GAP * 2, PANEL_HEIGHT)
 
     frame.panels = {}
@@ -313,9 +317,64 @@ local function BuildFrame()
         frame.panels[i] = panel
     end
 
+    -- Self-Found, offered alongside the difficulty because this is the one
+    -- moment the choice is free: both are cleanest started at level 1, and a
+    -- player who has to go and find the option later has usually already
+    -- traded, mailed or bought something.
+    --
+    -- Nothing is applied here. Like the difficulty panels, the tick is only an
+    -- intent until Select commits it -- a popup that changed a setting the
+    -- moment it was touched would leave a half-made choice behind if it were
+    -- closed.
+    local sfLabel = frame:CreateFontString(nil, "OVERLAY")
+    sfLabel:SetFont(BODY_FONT_PATH, SELF_FOUND_FONT_SIZE, "")
+    sfLabel:SetTextColor(unpack(BODY_COLOR))
+    sfLabel:SetText("Self-Found")
+    -- Anchored right of centre by half the checkbox and its gap, so the pair
+    -- reads as centred under the panels.
+    sfLabel:SetPoint("TOP", panelRow, "BOTTOM", 13, -22)
+
+    -- The label is two words, so what the mode actually costs lives in a
+    -- tooltip. Written as the restrictions themselves rather than a summary:
+    -- this is the moment the player decides, and "everything you own, you found
+    -- yourself" sounds appealing right up until the auction house is closed.
+    local SELF_FOUND_TOOLTIP =
+        "Everything your character owns must be found by that character.\n\n"
+        .. "While Self-Found is on:\n"
+        .. "|cffff8080-|r Trading with other players is blocked\n"
+        .. "|cffff8080-|r The auction house is blocked\n"
+        .. "|cffff8080-|r Mail from players and the auction house is locked, "
+        .. "including anything attached to it\n"
+        .. "|cffff8080-|r Sending items or gold by mail is blocked"
+
+    local sfCheck = CreateFrame("CheckButton", nil, frame)
+    sfCheck:SetSize(SELF_FOUND_CHECK_SIZE, SELF_FOUND_CHECK_SIZE)
+    sfCheck:SetPoint("RIGHT", sfLabel, "LEFT", -6, 1)
+    RustcoreTheme.SkinCheckbox(sfCheck)
+    sfCheck:SetChecked(Rustcore.GetSetting("selfFound") and true or false)
+    sfCheck:SetScript("OnClick", function()
+        PlaySoundFile(Rustcore.GetAssetPath("Audio/ticksound2.wav"), "Master")
+    end)
+
+    -- Reaches out over the label, so the words are clickable and hoverable too
+    -- rather than only the small box beside them.
+    sfCheck:SetHitRectInsets(0, -72, 0, 0)
+
+    local function ShowSelfFoundTooltip(owner)
+        GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Self-Found", 1, 0.82, 0)
+        GameTooltip:AddLine(SELF_FOUND_TOOLTIP, 0.9, 0.9, 0.9, true)
+        GameTooltip:Show()
+    end
+    sfCheck:SetScript("OnEnter", function(self) ShowSelfFoundTooltip(self) end)
+    sfCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    frame.selfFoundCheck = sfCheck
+
     local selectBtn = CreateFrame("Button", "RustcoreDifficultySelectButton", frame)
     selectBtn:SetSize(150, 56)
-    selectBtn:SetPoint("TOP", panelRow, "BOTTOM", 0, -24)
+    -- Clears the panels, the tick row and the gaps either side of it.
+    selectBtn:SetPoint("TOP", panelRow, "BOTTOM", 0, -58)
     RustcoreTheme.SkinDeleteButton(selectBtn)
     -- Built directly here (same font/size/spacing/shadow as the DELETE
     -- button's own LayoutDeleteButtonLetters) instead of going through
@@ -324,6 +383,13 @@ local function BuildFrame()
     selectBtn:SetScript("OnClick", function()
         local data = PANEL_DATA[frame.selectedIndex or DEFAULT_PANEL_INDEX]
         Rustcore.SetSetting("difficulty", data.value)
+        -- Only written when it differs, so an untouched tick on a character
+        -- that already has Self-Found on does not count as switching it on
+        -- again -- which the verification track would read as a fresh claim.
+        local wantSelfFound = sfCheck:GetChecked() and true or false
+        if (Rustcore.GetSetting("selfFound") and true or false) ~= wantSelfFound then
+            Rustcore.SetSetting("selfFound", wantSelfFound)
+        end
         PlaySoundFile(Rustcore.GetAssetPath("Audio/difficultysound.wav"), "Master")
         MarkSeen()
         frame:Hide()
@@ -350,6 +416,11 @@ end
 function RustcoreDifficultyPopup.Show()
     if not f then f = BuildFrame() end
     RustcoreDifficultyPopup.SetSelected(DEFAULT_PANEL_INDEX)
+    -- Seeded from the live setting each time, so reopening the popup shows what
+    -- is actually in force rather than whatever was last ticked and abandoned.
+    if f.selfFoundCheck then
+        f.selfFoundCheck:SetChecked(Rustcore.GetSetting("selfFound") and true or false)
+    end
     f:Show()
 end
 

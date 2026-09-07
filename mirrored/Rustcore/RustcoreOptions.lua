@@ -111,6 +111,9 @@ local function MakeCheckbox(parent, labelText, tooltipText, anchorTo, yOff, sett
     lbl:SetPoint("LEFT", cb, "RIGHT", 4, 0)
     lbl:SetText(labelText)
     ApplyBodyFont(lbl, fontSize or 17)
+    -- Exposed so a caller can hang an annotation off the end of the label rather
+    -- than on a line of its own.
+    cb.label = lbl
 
     if tooltipText then
         cb:SetScript("OnEnter", function(self)
@@ -499,28 +502,12 @@ local function BuildOptionsFrame()
 
     local function PercentFormatter(value) return math.floor(value * 100 + 0.5) .. "%" end
 
-    local interfaceScroll = CreateFrame(
-        "ScrollFrame",
-        "RustcoreInterfaceOptionsScrollFrame",
-        interfacePage,
-        "UIPanelScrollFrameTemplate"
-    )
-    interfaceScroll:SetPoint("TOPLEFT", interfacePage, "TOPLEFT", 0, 0)
-    interfaceScroll:SetPoint("BOTTOMRIGHT", interfacePage, "BOTTOMRIGHT", -24, 42)
-    interfaceScroll:EnableMouseWheel(true)
-
-    local interfaceContent = CreateFrame("Frame", nil, interfaceScroll)
-    interfaceContent:SetSize(410, 500)
-    interfaceScroll:SetScrollChild(interfaceContent)
-
-    local interfaceScrollBar = interfaceScroll.ScrollBar
-        or _G[interfaceScroll:GetName().."ScrollBar"]
-    interfaceScroll:SetScript("OnMouseWheel", function(_, delta)
-        if not interfaceScrollBar then return end
-        local minValue, maxValue = interfaceScrollBar:GetMinMaxValues()
-        local nextValue = interfaceScrollBar:GetValue() - (delta * 28)
-        interfaceScrollBar:SetValue(math.max(minValue, math.min(maxValue, nextValue)))
-    end)
+    -- Plain frame, no scroll. Everything on this page fits the window as it is,
+    -- and a scroll bar that never has anything to scroll is just a strip of
+    -- furniture down the side.
+    local interfaceContent = CreateFrame("Frame", nil, interfacePage)
+    interfaceContent:SetPoint("TOPLEFT", interfacePage, "TOPLEFT", 0, 0)
+    interfaceContent:SetPoint("BOTTOMRIGHT", interfacePage, "BOTTOMRIGHT", 0, 0)
 
     local notificationsScroll = CreateFrame(
         "ScrollFrame",
@@ -574,16 +561,23 @@ local function BuildOptionsFrame()
     -- obvious from the labels and it is permanent once a death makes it matter.
     -- Each one says underneath it what it does to certification, colour-coded so
     -- the harmless one does not read like the disqualifying one.
-    local NOTE_NEUTRAL = { 0.6, 0.75, 0.6 }
-    local NOTE_CAUTION = { 0.85, 0.7,  0.35 }
-    local NOTE_SEVERE  = { 0.85, 0.4,  0.35 }
+    -- Bright enough to read at this size against the panel art. The muted
+    -- versions these replace looked right in isolation and turned to mud beside
+    -- a full-brightness option label -- which is the only place they are ever
+    -- seen, now that they sit on the same line.
+    local NOTE_NEUTRAL = { 0.55, 0.92, 0.55 }
+    local NOTE_CAUTION = { 1.0,  0.82, 0.25 }
+    local NOTE_SEVERE  = { 1.0,  0.45, 0.4  }
 
-    local function MakeRuleNote(anchorTo, text, color, xOff)
+    -- Set beside the option's own label instead of underneath it. These are one
+    -- short clause each, and a line apiece turned four checkboxes into eight
+    -- rows of text -- which also pushed everything below off a fixed-height
+    -- page. Kept to the consequence itself: when it bites is the rule's own
+    -- business, and saying so was words the player did not need.
+    local function MakeRuleNote(checkbox, text, color)
         local note = gameplayPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        note:SetPoint("TOPLEFT", anchorTo, "BOTTOMLEFT", xOff or 30, -1)
-        note:SetWidth(330)
+        note:SetPoint("LEFT", checkbox.label, "RIGHT", 8, 0)
         note:SetJustifyH("LEFT")
-        note:SetWordWrap(true)
         note:SetText(text)
         ApplyBodyFont(note, 13)
         note:SetTextColor(color[1], color[2], color[3])
@@ -596,14 +590,12 @@ local function BuildOptionsFrame()
         "Blocks access to the mailbox, auction house, and player trading.",
         rulesHeader, -6, "selfFound")
 
-    local selfFoundNote = MakeRuleNote(cbSelfFound,
-        "A mode of its own, certified separately. Does not affect your difficulty.",
-        NOTE_NEUTRAL)
+    MakeRuleNote(cbSelfFound, "Certified separately.", NOTE_NEUTRAL)
 
     local cbSelfFoundBuff = MakeCheckbox(gameplayPage,
         "Show Buff Icon",
         "Shows verified Self-Found status as a buff icon on your buff bar. Disable to leave your buff bar untouched.",
-        selfFoundNote, -3, "selfFoundBuffEnabled", 4, 20, 14)
+        cbSelfFound, -3, "selfFoundBuffEnabled", 34, 20, 14)
 
     -- Second column on the buff icon's row rather than a row of its own: the
     -- page is a fixed height and already runs to the rule below, so a new full
@@ -612,7 +604,7 @@ local function BuildOptionsFrame()
         "Trade Conjured Items",
         "Allows player trades in which every item on both sides is a conjured item and neither side offers money. "
         .."Accept stays disabled until Rustcore has verified the contents. Anything else still ends Self-Found certification.",
-        selfFoundNote, -3, "selfFoundAllowConjured", 204, 20, 14)
+        cbSelfFound, -3, "selfFoundAllowConjured", 234, 20, 14)
 
     local exceptionsHeader = gameplayPage:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     exceptionsHeader:SetPoint("TOPLEFT", cbSelfFoundBuff, "BOTTOMLEFT", -34, -14)
@@ -624,9 +616,7 @@ local function BuildOptionsFrame()
         "If an enemy player damages you at any point during a combat, dying in the same combat will not mark any items for deletion.",
         exceptionsHeader, -6, "ignoreDeathAfterEnemyPlayerDamage")
 
-    local pvpNote = MakeRuleNote(cbPvpDeathProtection,
-        "Does not affect verification.",
-        NOTE_NEUTRAL)
+    MakeRuleNote(cbPvpDeathProtection, "No effect on verification.", NOTE_NEUTRAL)
 
     local cbWeapon = MakeCheckbox(gameplayPage,
         "Keep Main Weapon",
@@ -634,23 +624,19 @@ local function BuildOptionsFrame()
         .."Hunter: Ranged slot\n"
         .."Melee (Warrior/Paladin/Rogue/Shaman/Druid): Main Hand\n"
         .."Caster (Priest/Mage/Warlock): Wand if equipped, else Main Hand",
-        pvpNote, -4, "keepMainWeapon", -30)
+        cbPvpDeathProtection, -4, "keepMainWeapon")
 
-    local weaponNote = MakeRuleNote(cbWeapon,
-        "Caps difficulty verification at Rusted, once a death actually spares the weapon.",
-        NOTE_CAUTION)
+    MakeRuleNote(cbWeapon, "Caps verification at Rusted.", NOTE_CAUTION)
 
     local cbRepair = MakeCheckbox(gameplayPage,
         "Allow Item Repair",
         "Allows repair at merchants. By default repair is always blocked.",
-        weaponNote, -4, "allowRepair", -30)
+        cbWeapon, -4, "allowRepair")
 
-    MakeRuleNote(cbRepair,
-        "Disqualifies every difficulty verification, once you actually repair.",
-        NOTE_SEVERE)
+    MakeRuleNote(cbRepair, "Ends difficulty verification.", NOTE_SEVERE)
 
-    MakeRule(gameplayPage, -300)
-    local profileHeader = MakeHeader(gameplayPage, "Character Profile", -318)
+    MakeRule(gameplayPage, -232)
+    local profileHeader = MakeHeader(gameplayPage, "Character Profile", -250)
 
     local profileDesc = gameplayPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     profileDesc:SetPoint("TOPLEFT", profileHeader, "BOTTOMLEFT", 0, -6)
@@ -877,22 +863,8 @@ local function BuildOptionsFrame()
     ApplyBodyFont(aboutJoin, 14)
     aboutJoin:SetTextColor(0.85, 0.75, 0.5)
 
-    -- Tempered Souls: the supporters section, kept at the bottom of the page.
-    local temperedTitle = temperedPage:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    temperedTitle:SetPoint("TOPLEFT", aboutJoin, "BOTTOMLEFT", 0, -24)
-    temperedTitle:SetJustifyH("LEFT")
-    temperedTitle:SetText("Tempered Souls")
-    ApplyBodyFont(temperedTitle, 18)
-    temperedTitle:SetTextColor(1, 0.82, 0)
-
-    local temperedBody = temperedPage:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    temperedBody:SetPoint("TOPLEFT", temperedTitle, "BOTTOMLEFT", 0, -6)
-    temperedBody:SetPoint("TOPRIGHT", temperedPage, "TOPRIGHT", -26, 0)
-    temperedBody:SetJustifyH("LEFT")
-    temperedBody:SetWordWrap(true)
-    temperedBody:SetText("Thank you to the supporters, who help this addon stay up to date.")
-    ApplyBodyFont(temperedBody, 14)
-    temperedBody:SetTextColor(0.8, 0.8, 0.8)
+    -- The Tempered Souls supporters section lived here. Removed for now; the
+    -- page ends at the CurseForge line above.
 
     local importDropdown = CreateFrame("Frame", "RustcoreImportProfileDropdown", gameplayPage, "UIDropDownMenuTemplate")
     importDropdown:SetPoint("TOPLEFT", profileDesc, "BOTTOMLEFT", 0, -10)

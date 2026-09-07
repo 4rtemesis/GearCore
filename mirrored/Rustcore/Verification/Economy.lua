@@ -186,6 +186,35 @@ end
 -- `band` is "warn" or "fail". A fail band is still only recorded as a warning
 -- while E.ALLOW_ECONOMY_FAILURE is false, which is the conservative start the
 -- plan asks for; the warning type differs so the two are told apart later.
+-- For findings that are inference rather than observation: the top band costs
+-- the certification, but as UNVERIFIED. Nothing routed through here can ever
+-- reach FAILED, whatever the numbers say, because no rule was watched being
+-- broken -- there was simply more gold than the elapsed play explains.
+function E.EscalateUnverifiable(band, warningType, detail)
+    local track = V.GetTrack("selfFound")
+    if not track or not track.claimed then return false end
+    if track.status == V.STATUS.FAILED then return false end
+
+    V.AddWarning("selfFound", warningType, detail or "")
+    if V.Integrity and V.Integrity.Append then
+        V.Integrity.Append("ECON", {
+            kind   = warningType,
+            band   = band or "warn",
+            detail = detail or "",
+            level  = V.GetPlayerLevel() or 0,
+        })
+    end
+
+    if band == "fail" then
+        V.SetStatus("selfFound", V.STATUS.UNVERIFIED, warningType .. ": " .. tostring(detail or ""))
+    end
+
+    if RustcoreSelfFoundBuff and RustcoreSelfFoundBuff.Refresh then
+        RustcoreSelfFoundBuff.Refresh()
+    end
+    return true
+end
+
 function E.Escalate(band, warningType, detail)
     local track = V.GetTrack("selfFound")
     if not track or not track.claimed then return false end

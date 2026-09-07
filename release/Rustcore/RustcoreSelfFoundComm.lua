@@ -125,12 +125,13 @@ local function HandleQuery(name, sender)
     -- outside the 1-5 range the receiver accepts, so an uncertified character
     -- simply shows no dragon on older clients as well as new ones.
     local V = RustcoreVerification
-    local difficulty
+    local difficulty = 0
     if V and V.Difficulty and V.Difficulty.GetBroadcastTier then
         difficulty = V.Difficulty.GetBroadcastTier() or 0
-    else
-        difficulty = (Rustcore.GetSetting and Rustcore.GetSetting("difficulty")) or 1
     end
+    -- No fallback to the selected preset: if verification cannot answer, this
+    -- character has nothing verified to announce, and 0 is outside the 1-5 range
+    -- receivers accept, so they show no dragon.
     SendMessage(table.concat({ "R", myName, isVerified and "1" or "0", tostring(difficulty) }, DELIM), sender)
 end
 

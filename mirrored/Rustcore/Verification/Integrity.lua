@@ -31,7 +31,7 @@ local MOD_B, MUL_B = 67108859, 131071  -- largest prime below 2^26, 2^17-1
 
 -- Bumped whenever the sealed field list changes, so an addon update that seals
 -- different fields invalidates old seals instead of accusing the player.
-I.SEAL_VERSION = 8
+I.SEAL_VERSION = 10
 
 -- How many chain events are retained. Older entries roll off; the head still
 -- carries their contribution.
@@ -148,8 +148,13 @@ local function EconomyDigest(record)
     if type(economy) ~= "table" then return "" end
     local money = type(economy.money) == "table" and economy.money or {}
     local items = type(economy.items) == "table" and economy.items or {}
-    return format("%s:%s:%s:%s",
-        tostring(money.last or ""), tostring(money.unexplained or 0),
+    -- lastPlayed is sealed alongside lastGold because the two are read as a
+    -- pair: the cross-session check measures the gap as (current /played minus
+    -- lastPlayed), so moving it forward by hand shrinks the gap to nothing and
+    -- the gold that arrived during it stops being examined.
+    return format("%s:%s:%s:%s:%s",
+        tostring(money.last or ""), tostring(money.lastPlayed or ""),
+        tostring(money.unexplained or 0),
         tostring(money.anomalies or 0), tostring(items.anomalies or 0))
 end
 
@@ -160,47 +165,80 @@ local function CriticalState(record)
     local selfFound = record.selfFound or {}
     local timeState = record.time or {}
     local chain = record.chain or {}
+    -- Every key is given a value even when the underlying field is nil, using ""
+    -- as the placeholder. A nil in a Lua table constructor means the key simply
+    -- does not exist, so without this the *set* of sealed keys quietly changed
+    -- as fields were filled in during play -- which made the sealed shape
+    -- impossible to enumerate, and so impossible to fingerprint below. "" and 0
+    -- still encode differently, so nothing is lost by the substitution.
     return {
-        schema      = record.schemaVersion,
-        origin      = record.origin,
+        schema      = record.schemaVersion or "",
+        origin      = record.origin or "",
         guid        = record.identity and record.identity.guid or "",
-        dStatus     = difficulty.status,
-        dTier       = difficulty.highestVerifiedTier,
-        dCap        = difficulty.permanentCapTier,
-        dLevel      = difficulty.startedAtLevel,
-        sStatus     = selfFound.status,
-        sLevel      = selfFound.startedAtLevel,
+        dStatus     = difficulty.status or "",
+        dTier       = difficulty.highestVerifiedTier or "",
+        dCap        = difficulty.permanentCapTier or "",
+        dLevel      = difficulty.startedAtLevel or "",
+        sStatus     = selfFound.status or "",
+        sLevel      = selfFound.startedAtLevel or "",
         -- Phase 4 fields. The claim level decides whether a late Self-Found
         -- start may ever be promoted, the lapse flag decides whether a claim
         -- that was switched off may come back, and the pending cap limits what
         -- a difficulty promotion is allowed to certify -- all three would be
         -- worth editing in SavedVariables if they were not covered.
         sClaim      = selfFound.claimed and 1 or 0,
-        sClaimLevel = selfFound.qualifyFromLevel or selfFound.claimedAtLevel,
+        sClaimLevel = selfFound.qualifyFromLevel or selfFound.claimedAtLevel or "",
         sLapsed     = selfFound.claimLapsed and 1 or 0,
         sSusp       = selfFound.suspended and 1 or 0,
-        sRestore    = selfFound.restoreAtTracked,
+        sRestore    = selfFound.restoreAtTracked or "",
         -- Phase 5. A Self-Found failure is permanent and its cause is the
         -- reason the buff is gone, so both are sealed against a quiet edit.
         sViol       = selfFound.violations or 0,
-        sViolReason = selfFound.lastViolation,
+        sViolReason = selfFound.lastViolation or "",
         dWarn       = WarningsDigest(difficulty),
         sWarn       = WarningsDigest(selfFound),
         economy     = EconomyDigest(record),
-        dPending    = difficulty.pendingCapTier,
-        dFloor      = difficulty.deathFloorTier,
-        anchor      = timeState.anchorPlayed,
-        lastPlayed  = timeState.lastServerPlayed,
-        tracked     = timeState.trackedSinceAnchor,
-        untracked   = timeState.untrackedSeconds,
-        sequence    = chain.sequence,
+        dPending    = difficulty.pendingCapTier or "",
+        dFloor      = difficulty.deathFloorTier or "",
+        anchor      = timeState.anchorPlayed or "",
+        lastPlayed  = timeState.lastServerPlayed or "",
+        tracked     = timeState.trackedSinceAnchor or "",
+        untracked   = timeState.untrackedSeconds or "",
+        sequence    = chain.sequence or "",
         durability  = DurabilityDigest(record),
     }
 end
 
+-- A fingerprint of *which* fields are sealed, as opposed to what they contain.
+--
+-- The reason this exists: changing the sealed field list without also bumping
+-- SEAL_VERSION makes every existing record fail its own check on the next
+-- login, and Rustcore then tells the player their saved record looks tampered
+-- with. That is a developer mistake being reported as an accusation against
+-- someone who did nothing, and relying on remembering a manual bump had already
+-- failed more than once.
+--
+-- Folding the field names into the seal removes the failure mode entirely: any
+-- change to the sealed shape invalidates old seals automatically, and an
+-- invalidated seal is skipped rather than treated as evidence.
+local sealFingerprint
+
+local function SealFingerprint()
+    if not sealFingerprint then
+        local keys = {}
+        for key in pairs(CriticalState({})) do keys[#keys + 1] = key end
+        sort(keys)
+        sealFingerprint = I.Hash(concat(keys, ","))
+    end
+    return sealFingerprint
+end
+
+I.SealFingerprint = SealFingerprint
+
 local function ComputeSeal(record)
     local chain = record.chain or {}
-    return I.Hash((chain.head or "") .. "|" .. I.SEAL_VERSION .. "|" .. I.Canonical(CriticalState(record)))
+    return I.Hash((chain.head or "") .. "|" .. I.SEAL_VERSION .. "|" .. SealFingerprint()
+        .. "|" .. I.Canonical(CriticalState(record)))
 end
 
 -- Re-stamp the seal over the current state. Called after every mutation, so
@@ -212,6 +250,7 @@ function I.Seal(record)
     if not record then return end
     record.chain = record.chain or {}
     record.chain.sealVersion = I.SEAL_VERSION
+    record.chain.sealFields = SealFingerprint()
     record.chain.seal = ComputeSeal(record)
 end
 
@@ -262,9 +301,11 @@ function I.Check(record)
         -- of anything; the next Seal() call adopts it.
         return true
     end
-    if chain.sealVersion ~= I.SEAL_VERSION then
-        -- Sealed by a build that protected a different field list. Cannot be
-        -- compared, so it is not treated as tampering.
+    if chain.sealVersion ~= I.SEAL_VERSION or chain.sealFields ~= SealFingerprint() then
+        -- Sealed by a build that protected a different field list -- either
+        -- because the version was bumped deliberately, or because the shape
+        -- changed and the fingerprint noticed on its own. Either way there is
+        -- nothing to compare against, so it is not treated as tampering.
         return true
     end
 

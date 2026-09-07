@@ -1,173 +1,337 @@
 -- Rustcore Verification: character transfer between PCs
 -- (plan sections 32 to 42).
 --
--- Moving a character's verification to another machine is the one operation
--- that hands a player their whole certification as editable text, so almost all
--- of this file is about refusing to accept it.
+-- Moving a character's verification to another machine is the one operation that
+-- hands a player their whole certification as editable text, so most of this
+-- file is about refusing to accept it.
 --
 -- What makes a transfer trustworthy is not the string; it is /played. The server
 -- knows exactly how long the character has been played, an export records that
--- number, and an import compares it against the live one. That single comparison
--- is what stops the two attacks worth caring about:
+-- number, and an import compares it against the live one. That comparison stops
+-- the two attacks worth caring about:
 --
---   rollback   (section 38) exporting at 50 hours, playing to 55, then importing
---              the old string to erase what happened in between. The live
---              /played is five hours past the export, so it is refused.
---   fabrication a hand-written string cannot know a /played the server will
---              agree with, and the checksum has to reconcile as well.
+--   rollback    exporting at 50 hours, playing to 55, then importing the old
+--               string to erase what happened between. The live /played is five
+--               hours past the export, so it is refused.
+--   fabrication a hand-written string cannot know a /played the server agrees
+--               with, and the checksum has to reconcile as well.
 --
--- Section 40 is equally firm in the other direction: a few clean minutes played
--- on the new PC before importing must not be thrown away. Those minutes are
--- merged rather than discarded.
+-- The format is RC2: positional, numeric, and without a single English word in
+-- it. Field *names* used to be repeated inside every payload, statuses were
+-- spelled out as "LEGACY_MIGRATION", and item links carried their own display
+-- text -- all of it describing a layout both ends already know from the schema
+-- version. RC2 stores values in a fixed order and nothing else.
+--
+--   RC2:<checksum>:<v1~v2~v3~...>
+--
+-- There is no RC1 compatibility. The old format is gone rather than carried
+-- along, because supporting both would mean two parsers and two sets of
+-- validation rules to keep honest for a string that is regenerated in seconds.
 
 RustcoreVerification = RustcoreVerification or {}
 local V = RustcoreVerification
 V.Transfer = V.Transfer or {}
 local X = V.Transfer
 
-local floor = math.floor
+local floor, concat = math.floor, table.concat
 
--- Section 42: versioned from the beginning.
-X.PREFIX = "RCV1"
-X.SCHEMA = 1
+X.PREFIX = "RC2"
+X.SCHEMA = 2
 
--- Section 36: a transfer stays valid while the live /played is within ten
--- minutes of the exported one.
+-- A transfer stays valid while the live /played is within ten minutes of the
+-- exported one.
 X.PLAYED_TOLERANCE = 600
 
 -- How much of that difference may go unexplained by play this session tracked.
 -- Covers the ordinary leak in a legitimate transfer: the seconds between
--- pressing Export and logging out, and any accrual lag around a loading screen.
--- Kept deliberately tight, because this is the number that decides how long a
--- window an old export could be used to undo something in.
+-- pressing Export and logging out, and accrual lag around a loading screen.
+-- Kept tight, because this decides how long a window an old export could be used
+-- to undo something in.
 X.UNACCOUNTED_ALLOWANCE = 90
 
--- How long to wait for the server's /played reply before giving up on an
--- import. The request is cheap and the reply is usually immediate.
 X.PLAYED_TIMEOUT = 10
+
+-- Separators. Every leaf value is base36, decimal, or lowercase hex, so none of
+-- these three can appear inside one. `~` rather than `-` at the top level
+-- because a player GUID contains dashes.
+local FIELD_SEP, GROUP_SEP, PAIR_SEP = "~", ".", ","
 
 local function Hash(text)
     if V.Integrity and V.Integrity.Hash then return V.Integrity.Hash(text) end
     return "nohash"
 end
 
--- Encoding ---------------------------------------------------------------------
+-- Base36 ------------------------------------------------------------------------
 --
--- A compact "key=value;key=value" body rather than a serialised Lua table, per
--- section 33. Every separator is escaped inside values, so splitting on ";" and
--- on the first "=" is unambiguous -- which matters because one of the values is
--- an item link, and those are full of "|".
+-- Roughly a third off the long numbers -- /played in seconds, copper, item ids,
+-- sequence counters -- for about fifteen lines and no dependency. Non-negative
+-- only, which every value encoded this way is.
+
+local B36 = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+local function ToB36(value)
+    local n = floor(tonumber(value) or 0)
+    if n <= 0 then return "0" end
+    local digits = {}
+    while n > 0 do
+        local d = n % 36
+        digits[#digits + 1] = B36:sub(d + 1, d + 1)
+        n = floor(n / 36)
+    end
+    -- Built least-significant first; reverse into place.
+    local out = {}
+    for i = #digits, 1, -1 do out[#out + 1] = digits[i] end
+    return concat(out)
+end
+
+-- Returns nil for anything that is not a valid base36 string, which is what
+-- makes the importer's validation strict rather than forgiving.
+local function FromB36(text)
+    if type(text) ~= "string" or text == "" then return nil end
+    local n = 0
+    for i = 1, #text do
+        local d = B36:find(text:sub(i, i), 1, true)
+        if not d then return nil end
+        n = n * 36 + (d - 1)
+    end
+    return n
+end
+
+X.ToB36, X.FromB36 = ToB36, FromB36
+
+-- Codes -------------------------------------------------------------------------
 --
--- Deliberately left as readable text rather than compressed and base64'd. There
--- is no deflate library in this addon, and base64 without compression would make
--- the string a third longer while section 33 asks for it to be short. The
--- checksum below is what protects it; section 30 already concedes that none of
--- this resists someone editing Rustcore's own Lua.
+-- Every enumerated value travels as a small integer. Both ends resolve it
+-- through these tables, so the payload never carries a word like "UNVERIFIED".
 
-local function Esc(value)
-    local text = tostring(value == nil and "" or value)
-    text = text:gsub("\\", "\\b")
-    text = text:gsub(";", "\\s")
-    text = text:gsub("=", "\\e")
-    text = text:gsub("|", "\\p")
-    text = text:gsub("\n", "\\n")
-    return text
-end
+local STATUS_TO_CODE = {
+    VERIFIED = 1, WARNING = 2, SUSPENDED = 3,
+    UNCERTAIN = 4, UNVERIFIED = 5, FAILED = 6,
+}
+local CODE_TO_STATUS = {}
+for name, code in pairs(STATUS_TO_CODE) do CODE_TO_STATUS[code] = name end
 
-local UNESCAPE = { b = "\\", s = ";", e = "=", p = "|", n = "\n" }
+local ORIGIN_TO_CODE = { NEW_CHARACTER = 1, LEGACY_MIGRATION = 2, IMPORT = 3 }
+local CODE_TO_ORIGIN = {}
+for name, code in pairs(ORIGIN_TO_CODE) do CODE_TO_ORIGIN[code] = name end
 
-local function Unesc(text)
-    return (tostring(text or ""):gsub("\\(.)", function(c)
-        return UNESCAPE[c] or c
-    end))
-end
+local BAND_TO_CODE = { OK = 1, WARNING = 2, SEVERE = 3 }
+local CODE_TO_BAND = {}
+for name, code in pairs(BAND_TO_CODE) do CODE_TO_BAND[code] = name end
 
-local function Serialize(fields)
-    local keys = {}
-    for key in pairs(fields) do keys[#keys + 1] = key end
-    table.sort(keys)
+-- Warning kinds. Append only: an existing number must never be reused for a
+-- different kind, or an older export would import as the wrong finding.
+local WARN_TO_CODE = {
+    unexplainedRepair = 1,
+    untrackedPlay     = 2,
+    goldDiscrepancy   = 3,
+    itemDiscrepancy   = 4,
+    mailAcquisition   = 5,
+}
+local CODE_TO_WARN = {}
+for name, code in pairs(WARN_TO_CODE) do CODE_TO_WARN[code] = name end
 
-    local parts = {}
-    for _, key in ipairs(keys) do
-        local value = fields[key]
-        if value ~= nil then
-            parts[#parts + 1] = key .. "=" .. Esc(value)
-        end
+-- Self-Found violation reasons, likewise append-only. The text is rebuilt on
+-- import so the record still reads sensibly; only the code travels.
+local VIOLATION_TEXT = {
+    [1] = "received an item in a player trade",
+    [2] = "received money in a player trade",
+    [3] = "used the auction house",
+    [4] = "took a blocked mail attachment",
+    [5] = "an unexplained acquisition",
+}
+local TEXT_TO_VIOLATION = {}
+for code, text in pairs(VIOLATION_TEXT) do TEXT_TO_VIOLATION[text] = code end
+
+-- Best-effort match for a reason string that was produced before codes existed,
+-- or built by string concatenation elsewhere.
+local function ViolationCode(reason)
+    if type(reason) ~= "string" or reason == "" then return 0 end
+    local exact = TEXT_TO_VIOLATION[reason]
+    if exact then return exact end
+    if reason:find("trade", 1, true) then
+        return reason:find("money", 1, true) and 2 or 1
     end
-    return table.concat(parts, ";")
+    if reason:find("auction", 1, true) then return 3 end
+    if reason:find("mail", 1, true) then return 4 end
+    return 5
 end
 
-local function Deserialize(body)
-    local fields = {}
-    for pair in tostring(body or ""):gmatch("[^;]+") do
-        local key, value = pair:match("^([^=]+)=(.*)$")
-        if key then fields[key] = Unesc(value) end
-    end
-    return fields
-end
+-- Self-Found booleans, packed into one field instead of three.
+local SF_CLAIMED, SF_LAPSED, SF_SUSPENDED = 1, 2, 4
 
-local function Num(value, default)
-    return tonumber(value) or default
-end
+-- Group packing -------------------------------------------------------------------
 
--- Sub-table packing ------------------------------------------------------------
-
--- Typed warning counts, as "kind:count,kind:count".
+-- Warnings as "code,count.code,count". Unknown kinds are dropped rather than
+-- carried as text: a warning Rustcore cannot name is one it cannot act on.
 local function PackWarnings(track)
     local warnings = type(track) == "table" and track.warnings or nil
     if type(warnings) ~= "table" then return "" end
     local parts = {}
     for kind, count in pairs(warnings) do
-        parts[#parts + 1] = tostring(kind) .. ":" .. tostring(count or 0)
+        local code = WARN_TO_CODE[kind]
+        if code and (tonumber(count) or 0) > 0 then
+            parts[#parts + 1] = code .. PAIR_SEP .. ToB36(count)
+        end
     end
     table.sort(parts)
-    return table.concat(parts, ",")
+    return concat(parts, GROUP_SEP)
 end
 
 local function UnpackWarnings(text)
     local warnings = {}
-    for entry in tostring(text or ""):gmatch("[^,]+") do
-        local kind, count = entry:match("^(.-):(%d+)$")
-        if kind then warnings[kind] = tonumber(count) end
+    if type(text) ~= "string" or text == "" then return warnings end
+    for entry in text:gmatch("[^%" .. GROUP_SEP .. "]+") do
+        local code, count = entry:match("^(%d+)" .. PAIR_SEP .. "(%w+)$")
+        local kind = code and CODE_TO_WARN[tonumber(code)]
+        local n = count and FromB36(count)
+        if not kind or not n then return nil end   -- malformed: reject the import
+        warnings[kind] = n
     end
     return warnings
 end
 
--- Equipped durability, as "slot:cur:max:id,...". Carried because it is what an
--- unexplained-repair finding is measured against (section 14); without it the
--- first scan after an import would have nothing to compare to.
+-- Durability, positionally by the known durable-slot order rather than storing a
+-- slot id per entry. An absent slot is an empty group, so the order alone says
+-- which slot each entry belongs to.
+local DURABLE_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10, 16, 17, 18 }
+
 local function PackDurability(record)
     local state = record.durabilityState
-    if type(state) ~= "table" or type(state.slots) ~= "table" then return "" end
-    local parts = {}
-    for slot, entry in pairs(state.slots) do
-        if type(entry) == "table" then
-            parts[#parts + 1] = string.format("%s:%s:%s:%s", tostring(slot),
-                tostring(entry.cur or 0), tostring(entry.max or 0), tostring(entry.id or ""))
+    local slots = type(state) == "table" and state.slots or nil
+    if type(slots) ~= "table" then return "" end
+
+    local parts, any = {}, false
+    for i, slot in ipairs(DURABLE_SLOTS) do
+        local entry = slots[slot]
+        if type(entry) == "table" and entry.cur and entry.max then
+            parts[i] = ToB36(entry.cur) .. PAIR_SEP .. ToB36(entry.max)
+                .. PAIR_SEP .. ToB36(entry.id or 0)
+            any = true
+        else
+            parts[i] = ""
         end
     end
-    table.sort(parts)
-    return table.concat(parts, ",")
+    if not any then return "" end
+    return concat(parts, GROUP_SEP)
 end
 
 local function UnpackDurability(text)
-    local slots = {}
-    for entry in tostring(text or ""):gmatch("[^,]+") do
-        local slot, cur, maximum, id = entry:match("^(%d+):(%d+):(%d+):(%d*)$")
-        if slot then
-            slots[tonumber(slot)] = {
-                cur = tonumber(cur),
-                max = tonumber(maximum),
-                id  = tonumber(id),
-            }
+    if type(text) ~= "string" or text == "" then return nil end
+
+    local slots, index = {}, 0
+    -- Split preserving empties, so position still identifies the slot.
+    local cursor = 1
+    while true do
+        local nextSep = text:find(GROUP_SEP, cursor, true)
+        local piece = nextSep and text:sub(cursor, nextSep - 1) or text:sub(cursor)
+        index = index + 1
+        if index > #DURABLE_SLOTS then return nil end   -- too many groups
+
+        if piece ~= "" then
+            local cur, maximum, id = piece:match("^(%w+)" .. PAIR_SEP .. "(%w+)" .. PAIR_SEP .. "(%w+)$")
+            local c, m, i2 = FromB36(cur or ""), FromB36(maximum or ""), FromB36(id or "")
+            if not c or not m or not i2 then return nil end
+            slots[DURABLE_SLOTS[index]] = { cur = c, max = m, id = (i2 > 0) and i2 or nil }
         end
+
+        if not nextSep then break end
+        cursor = nextSep + 1
     end
     return slots
 end
 
--- Stats (plan section 41) --------------------------------------------------------
+-- Best item lost, as id.suffix.unique -- never a hyperlink and never a name.
+-- The suffix is signed (Classic random suffixes are negative) so it stays plain
+-- decimal; the other two are base36.
+local function PackBestItem(link)
+    if type(link) ~= "string" then return "" end
+    local itemString = link:match("|H(item[^|]*)|h") or link:match("^(item:[%d:%-]+)")
+    if not itemString then return "" end
 
-local function GetStatsTable()
+    local pieces, cursor = {}, 1
+    while true do
+        local nextSep = itemString:find(":", cursor, true)
+        pieces[#pieces + 1] = nextSep and itemString:sub(cursor, nextSep - 1) or itemString:sub(cursor)
+        if not nextSep then break end
+        cursor = nextSep + 1
+    end
+
+    local id = tonumber(pieces[2])
+    if not id or id <= 0 then return "" end
+    local suffix = tonumber(pieces[8]) or 0
+    local unique = tonumber(pieces[9]) or 0
+    return ToB36(id) .. GROUP_SEP .. tostring(floor(suffix))
+        .. GROUP_SEP .. ToB36(unique >= 0 and unique or 0)
+end
+
+-- Rebuild an item string the client can resolve. The display name and full link
+-- come back from GetItemInfo rather than travelling in the payload.
+local function UnpackBestItem(text)
+    if type(text) ~= "string" or text == "" then return nil end
+    local id, suffix, unique = text:match("^(%w+)%" .. GROUP_SEP .. "(%-?%d+)%" .. GROUP_SEP .. "(%w+)$")
+    local itemID = FromB36(id or "")
+    local uniqueID = FromB36(unique or "")
+    if not itemID or itemID <= 0 or not uniqueID then return nil end
+    return string.format("item:%d:0:0:0:0:0:%d:%d", itemID, tonumber(suffix) or 0, uniqueID)
+end
+
+-- Resolve `itemString` to a real link and store it. GetItemInfo answers nil for
+-- an item the client has not cached, so the lookup is retried when the server
+-- sends it.
+local function ApplyBestItemLink(itemString, ilvl)
+    if not itemString then return end
+
+    local function store()
+        local stats = X.GetStatsTable and X.GetStatsTable()
+        if not stats then return false end
+        local _, link = GetItemInfo(itemString)
+        if not link then return false end
+        stats.bestItemLostLink = link
+        stats.bestItemLostIlvl = ilvl or stats.bestItemLostIlvl or 0
+        if RustcoreStats and RustcoreStats.Refresh then RustcoreStats.Refresh() end
+        return true
+    end
+
+    if store() then return end
+
+    local waiter = CreateFrame("Frame")
+    waiter:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    waiter:SetScript("OnEvent", function(self)
+        if store() then
+            self:UnregisterAllEvents()
+            self:SetScript("OnEvent", nil)
+        end
+    end)
+    -- Give up rather than listen forever for an item the server will not send.
+    if C_Timer and C_Timer.After then
+        C_Timer.After(30, function()
+            waiter:UnregisterAllEvents()
+            waiter:SetScript("OnEvent", nil)
+        end)
+    end
+end
+
+-- Identity -------------------------------------------------------------------------
+--
+-- The GUID is the whole of the identity now. Name, realm, class and race were
+-- carried before and never consulted -- the import validated the GUID and then
+-- rebuilt the identity block from the live character anyway -- so they were four
+-- fields of pure weight. The "Player-" prefix every GUID starts with is dropped
+-- and both sides compare the same stripped form, so nothing has to reconstruct it.
+
+local function StripGuid(guid)
+    if type(guid) ~= "string" or guid == "" then return nil end
+    return (guid:gsub("^Player%-", ""))
+end
+
+local function CurrentGuid()
+    return StripGuid(UnitGUID and UnitGUID("player") or nil)
+end
+
+-- Stats -----------------------------------------------------------------------------
+
+function X.GetStatsTable()
     if not RustcoreDB then return nil end
     RustcoreDB.characterStats = RustcoreDB.characterStats or {}
     local key = Rustcore and Rustcore.GetCharacterKey and Rustcore.GetCharacterKey()
@@ -175,19 +339,27 @@ local function GetStatsTable()
     RustcoreDB.characterStats[key] = RustcoreDB.characterStats[key] or {}
     return RustcoreDB.characterStats[key]
 end
+local GetStatsTable = X.GetStatsTable
 
--- Export (plan section 34) --------------------------------------------------------
+-- Field order ------------------------------------------------------------------------
+--
+-- The schema version owns this list. Positions are never reordered or reused;
+-- a change here means a new X.SCHEMA and a new prefix.
+X.FIELD_COUNT = 40
 
--- Build the string from whatever state exists right now. Callers go through
--- X.BeginExport, which refreshes /played first so the anchor is never stale.
--- `freshPlayed`, when given, is the figure from the /played reply that prompted
--- this export. It overrides the stored copy because `tp` below is the number an
--- import measures rollback against, and it must be the newest one available.
+-- Export ------------------------------------------------------------------------------
+
 function X.BuildString(freshPlayed)
     local record = V.GetRecord()
     if not record then return nil, "no verification record for this character" end
 
-    local identity   = record.identity or {}
+    local guid = CurrentGuid()
+    if not guid then
+        -- Without a GUID there is no identity to bind the transfer to, and an
+        -- import could not tell whose it was.
+        return nil, "your character ID is not available yet; try again in a moment"
+    end
+
     local difficulty = record.difficulty or {}
     local selfFound  = record.selfFound or {}
     local timeState  = record.time or {}
@@ -197,137 +369,94 @@ function X.BuildString(freshPlayed)
     local chain      = record.chain or {}
     local stats      = GetStatsTable() or {}
 
+    local sFlags = 0
+    if selfFound.claimed     then sFlags = sFlags + SF_CLAIMED end
+    if selfFound.claimLapsed then sFlags = sFlags + SF_LAPSED end
+    if selfFound.suspended   then sFlags = sFlags + SF_SUSPENDED end
+
+    local function tier(value) return tostring(floor(tonumber(value) or 0)) end
+    local function opt(value) return value and ToB36(value) or "" end
+
     local fields = {
-        v    = X.SCHEMA,
-        av   = V.GetAddonVersion(),
-        ts   = time and time() or 0,
+        tostring(X.SCHEMA),                                          --  1
+        guid,                                                        --  2
+        tostring(ORIGIN_TO_CODE[record.origin or ""] or 0),          --  3
+        ToB36(record.createdAt or 0),                                --  4
 
-        -- Identity (section 3). The GUID is what an import validates against.
-        ig   = identity.guid or "",
-        inm  = identity.name or "",
-        ir   = identity.realm or "",
-        ic   = identity.class or "",
-        ira  = identity.race or "",
+        tostring(STATUS_TO_CODE[difficulty.status or ""] or 0),      --  5
+        tier(difficulty.highestVerifiedTier),                        --  6
+        tier(difficulty.permanentCapTier),                           --  7
+        tier(difficulty.pendingCapTier),                             --  8
+        tier(difficulty.deathFloorTier),                             --  9
+        tier(difficulty.startedAtLevel),                             -- 10
+        ToB36(difficulty.deaths or 0),                               -- 11
+        ToB36(difficulty.repairViolations or 0),                     -- 12
+        PackWarnings(difficulty),                                    -- 13
 
-        org  = record.origin or "",
-        cr   = floor(Num(record.createdAt, 0)),
+        tostring(STATUS_TO_CODE[selfFound.status or ""] or 0),       -- 14
+        tier(selfFound.startedAtLevel),                              -- 15
+        tier(selfFound.qualifyFromLevel),                            -- 16
+        tier(selfFound.claimedAtLevel),                              -- 17
+        tostring(sFlags),                                            -- 18
+        opt(selfFound.restoreAtTracked),                             -- 19
+        ToB36(selfFound.violations or 0),                            -- 20
+        tostring(ViolationCode(selfFound.lastViolation)),            -- 21
+        PackWarnings(selfFound),                                     -- 22
 
-        -- Difficulty track.
-        ds   = difficulty.status or "",
-        dt   = Num(difficulty.highestVerifiedTier, 0),
-        dc   = difficulty.permanentCapTier and Num(difficulty.permanentCapTier, 0) or "",
-        dp   = difficulty.pendingCapTier and Num(difficulty.pendingCapTier, 0) or "",
-        dfl  = difficulty.deathFloorTier and Num(difficulty.deathFloorTier, 0) or "",
-        dl   = difficulty.startedAtLevel and Num(difficulty.startedAtLevel, 0) or "",
-        dd   = Num(difficulty.deaths, 0),
-        drv  = Num(difficulty.repairViolations, 0),
-        dw   = PackWarnings(difficulty),
+        ToB36(timeState.anchorPlayed or 0),                          -- 23
+        ToB36(freshPlayed or timeState.lastServerPlayed or 0),       -- 24
+        ToB36(timeState.trackedSinceAnchor or 0),                    -- 25
+        ToB36(timeState.untrackedSeconds or 0),                      -- 26
+        tostring(BAND_TO_CODE[timeState.gapBand or "OK"] or 1),      -- 27
 
-        -- Self-Found track.
-        ss   = selfFound.status or "",
-        sl   = selfFound.startedAtLevel and Num(selfFound.startedAtLevel, 0) or "",
-        scl  = selfFound.claimed and 1 or 0,
-        sql  = selfFound.qualifyFromLevel and Num(selfFound.qualifyFromLevel, 0) or "",
-        sal  = selfFound.claimedAtLevel and Num(selfFound.claimedAtLevel, 0) or "",
-        slp  = selfFound.claimLapsed and 1 or 0,
-        ssp  = selfFound.suspended and 1 or 0,
-        srt  = selfFound.restoreAtTracked and Num(selfFound.restoreAtTracked, 0) or "",
-        sv   = Num(selfFound.violations, 0),
-        svr  = selfFound.lastViolation or "",
-        sw   = PackWarnings(selfFound),
+        opt(money.last),                                             -- 28
+        opt(money.lastPlayed),                                       -- 29
+        ToB36(money.unexplained or 0),                               -- 30
+        ToB36(money.anomalies or 0),                                 -- 31
+        ToB36(items.anomalies or 0),                                 -- 32
 
-        -- Playtime anchor (sections 16 and 37).
-        ta   = floor(Num(timeState.anchorPlayed, 0)),
-        tp   = floor(freshPlayed or Num(timeState.lastServerPlayed, 0)),
-        tt   = floor(Num(timeState.trackedSinceAnchor, 0)),
-        tu   = floor(Num(timeState.untrackedSeconds, 0)),
-        tb   = timeState.gapBand or "OK",
+        PackDurability(record),                                      -- 33
 
-        -- Economy baselines (Phase 7).
-        eml  = money.last and floor(Num(money.last, 0)) or "",
-        emu  = floor(Num(money.unexplained, 0)),
-        ema  = Num(money.anomalies, 0),
-        eia  = Num(items.anomalies, 0),
+        chain.head or "",                                            -- 34
+        ToB36(chain.sequence or 0),                                  -- 35
 
-        -- Durability baseline.
-        du   = PackDurability(record),
-
-        -- Chain continuity (section 30). The head and sequence travel so the
-        -- imported record continues the same chain rather than starting a new
-        -- one; the retained event window deliberately does not, per section 33.
-        ch   = chain.head or "",
-        cs   = Num(chain.sequence, 0),
-
-        -- Stats (section 41).
-        xd   = Num(stats.destroyedItems, 0),
-        xr   = Num(stats.rustedItems, 0),
-        xbi  = Num(stats.bestItemLostIlvl, 0),
-        xbl  = stats.bestItemLostLink or "",
+        ToB36(stats.destroyedItems or 0),                            -- 36
+        ToB36(stats.rustedItems or 0),                               -- 37
+        ToB36(stats.deaths or 0),                                    -- 38
+        ToB36(stats.bestItemLostIlvl or 0),                          -- 39
+        PackBestItem(stats.bestItemLostLink),                        -- 40
     }
 
-    local body = Serialize(fields)
+    local body = concat(fields, FIELD_SEP)
     return X.PREFIX .. ":" .. Hash(body) .. ":" .. body
 end
 
--- Section 34: never export against a stale /played. The reply is asynchronous,
--- so the string is built in the callback.
-function X.BeginExport(callback)
-    local record = V.GetRecord()
-    if not record then
-        callback(nil, "no verification record for this character")
-        return
-    end
+-- Import --------------------------------------------------------------------------
 
-    local done = false
-    -- See BeginImport: the played figure is taken from the event payload rather
-    -- than from Time.lua's copy, because the two event handlers have no
-    -- guaranteed order.
-    local function finish(played)
-        if done then return end
-        done = true
-        local str, err = X.BuildString(played)
-        if str and V.Integrity and V.Integrity.Append then
-            V.Integrity.Append("EXPORT", {
-                played = floor(played or Num(V.Time and V.Time.GetLastServerPlayed(), 0)),
-            })
-        end
-        callback(str, err)
+-- Split preserving empty fields, since position is the only thing identifying
+-- them.
+local function SplitFields(body)
+    local out, cursor = {}, 1
+    while true do
+        local nextSep = body:find(FIELD_SEP, cursor, true)
+        out[#out + 1] = nextSep and body:sub(cursor, nextSep - 1) or body:sub(cursor)
+        if not nextSep then break end
+        cursor = nextSep + 1
     end
-
-    X.pendingExport = finish
-    if V.Time and V.Time.Request then V.Time.Request() end
-
-    -- The reply normally lands within a frame or two; this is the fallback for
-    -- a server that does not answer, and it exports against the last known
-    -- figure rather than failing outright.
-    if C_Timer and C_Timer.After then
-        C_Timer.After(X.PLAYED_TIMEOUT, function()
-            -- Only abandon the wait this call started; a second export begun in
-            -- the meantime owns the slot now.
-            if X.pendingExport ~= finish then return end
-            X.pendingExport = nil
-            finish()
-        end)
-    else
-        finish()
-    end
+    return out
 end
 
--- Import (plan sections 35 to 40) --------------------------------------------------
-
--- Parse and check everything that can be checked without the server.
--- Returns the field table, or nil plus a reason.
+-- Parse and check everything checkable without the server. Returns a decoded
+-- table, or nil plus a reason. Every field is validated for type and range
+-- before any of it is applied.
 function X.Parse(text)
     if type(text) ~= "string" then return nil, "nothing to import" end
-    -- Line breaks are stripped wherever they appear, not just at the ends: Esc
-    -- turns every newline in the data into "\n", so any literal one left in the
-    -- pasted text was introduced in transit by an editor or a chat client.
-    -- Spaces are left alone, because item names contain them.
-    text = text:gsub("[\r\n]", "")
-    text = text:gsub("^%s+", ""):gsub("%s+$", "")
+    -- Line breaks are stripped wherever they appear: no field can contain one,
+    -- so any that survives was introduced in transit.
+    text = text:gsub("[\r\n%s]", "")
     if text == "" then return nil, "nothing to import" end
 
-    local prefix, checksum, body = text:match("^(RCV%d+):(%x+):(.*)$")
+    local prefix, checksum, body = text:match("^(RC%d+):(%x+):(.*)$")
     if not prefix then
         return nil, "this does not look like a Rustcore transfer string"
     end
@@ -338,67 +467,154 @@ function X.Parse(text)
         return nil, "the transfer string is damaged or was edited"
     end
 
-    local fields = Deserialize(body)
-    if Num(fields.v, 0) ~= X.SCHEMA then
+    local raw = SplitFields(body)
+    if #raw ~= X.FIELD_COUNT then
+        return nil, "this transfer is malformed"
+    end
+
+    -- Small typed readers. Any failure aborts the whole import rather than
+    -- silently substituting a default, because a field Rustcore cannot read is a
+    -- field it cannot make a certification decision from.
+    local bad = false
+    local function int(index, lo, hi)
+        local n = tonumber(raw[index])
+        if not n or n ~= floor(n) or n < lo or n > hi then bad = true; return nil end
+        return n
+    end
+    local function b36(index)
+        local n = FromB36(raw[index])
+        if not n then bad = true end
+        return n
+    end
+    local function b36opt(index)
+        if raw[index] == "" then return nil end
+        local n = FromB36(raw[index])
+        if not n then bad = true end
+        return n
+    end
+    local function tierOpt(index)
+        local n = int(index, 0, V.MAX_TIER or 5)
+        if n == 0 then return nil end
+        return n
+    end
+
+    local schema = int(1, X.SCHEMA, X.SCHEMA)
+    if bad or schema ~= X.SCHEMA then
         return nil, "this transfer was created by an incompatible version of Rustcore"
     end
 
-    -- Section 3: verification is bound to the character it was earned on.
-    local currentGuid = UnitGUID and UnitGUID("player") or nil
-    if fields.ig and fields.ig ~= "" and currentGuid and fields.ig ~= currentGuid then
+    local guid = raw[2]
+    if type(guid) ~= "string" or guid == "" then return nil, "this transfer is malformed" end
+
+    local dWarn = UnpackWarnings(raw[13])
+    local sWarn = UnpackWarnings(raw[22])
+    if not dWarn or not sWarn then return nil, "this transfer is malformed" end
+
+    local durability = nil
+    if raw[33] ~= "" then
+        durability = UnpackDurability(raw[33])
+        if not durability then return nil, "this transfer is malformed" end
+    end
+
+    local chainHead = raw[34]
+    if chainHead ~= "" and not chainHead:match("^%x+$") then
+        return nil, "this transfer is malformed"
+    end
+
+    local decoded = {
+        guid        = guid,
+        origin      = CODE_TO_ORIGIN[int(3, 0, 3) or 0],
+        createdAt   = b36(4),
+
+        dStatus     = CODE_TO_STATUS[int(5, 0, 6) or 0],
+        dTier       = int(6, 0, V.MAX_TIER or 5),
+        dCap        = tierOpt(7),
+        dPending    = tierOpt(8),
+        dFloor      = tierOpt(9),
+        dLevel      = tierOpt(10),
+        dDeaths     = b36(11),
+        dRepairs    = b36(12),
+        dWarnings   = dWarn,
+
+        sStatus     = CODE_TO_STATUS[int(14, 0, 6) or 0],
+        sLevel      = tierOpt(15),
+        sQualify    = tierOpt(16),
+        sClaimLevel = tierOpt(17),
+        sFlags      = int(18, 0, 7),
+        sRestoreAt  = b36opt(19),
+        sViolations = b36(20),
+        sViolCode   = int(21, 0, 9),
+        sWarnings   = sWarn,
+
+        anchor      = b36(23),
+        played      = b36(24),
+        tracked     = b36(25),
+        untracked   = b36(26),
+        band        = CODE_TO_BAND[int(27, 1, 3) or 1],
+
+        moneyLast   = b36opt(28),
+        moneyPlayed = b36opt(29),
+        moneyUnexpl = b36(30),
+        moneyAnom   = b36(31),
+        itemAnom    = b36(32),
+
+        durability  = durability,
+
+        chainHead   = chainHead,
+        chainSeq    = b36(35),
+
+        statBroken  = b36(36),
+        statRusted  = b36(37),
+        statDeaths  = b36(38),
+        statIlvl    = b36(39),
+        bestItem    = (raw[40] ~= "") and UnpackBestItem(raw[40]) or nil,
+    }
+
+    if bad then return nil, "this transfer is malformed" end
+    if raw[40] ~= "" and not decoded.bestItem then
+        return nil, "this transfer is malformed"
+    end
+
+    -- Verification is bound to the character it was earned on.
+    local currentGuid = CurrentGuid()
+    if not currentGuid then
+        return nil, "your character ID is not available yet; try again in a moment"
+    end
+    if decoded.guid ~= currentGuid then
         return nil, "this transfer belongs to a different character"
     end
-    if (not fields.ig or fields.ig == "") and currentGuid then
-        -- Exported before a GUID was available. Fall back to name and realm.
-        local name = UnitName and UnitName("player") or nil
-        local realm = GetRealmName and GetRealmName() or nil
-        if fields.inm ~= name or (fields.ir ~= "" and realm and fields.ir ~= realm) then
-            return nil, "this transfer belongs to a different character"
-        end
-    end
 
-    return fields
+    return decoded
 end
 
--- Sections 37 and 38. `serverPlayed` is the live figure; `fields` is the parsed
--- transfer. Returns ok, reason, and the number of seconds to credit back.
-function X.Reconcile(fields, serverPlayed)
-    local exported = Num(fields.tp, 0)
+-- Reconciliation ------------------------------------------------------------------
+
+function X.Reconcile(decoded, serverPlayed)
+    local exported = decoded.played or 0
     local difference = (serverPlayed or 0) - exported
 
     if difference < -60 then
-        -- The live character has *less* played time than the transfer claims,
-        -- which no amount of playing can produce.
         return false, "this transfer is from further ahead than this character"
     end
 
     if difference > X.PLAYED_TOLERANCE then
-        -- Section 38: the gap is what an old export used to erase later play
-        -- would look like.
         return false, string.format(
             "%d minutes have been played since this was exported (limit %d)",
             floor(difference / 60), floor(X.PLAYED_TOLERANCE / 60))
     end
 
-    -- Section 40: whatever this session tracked cleanly is credited rather than
-    -- discarded. Capped at the real difference so it can never manufacture time.
     local sessionTracked = 0
     if V.Time and V.Time.GetSessionTracked then
-        sessionTracked = Num(V.Time.GetSessionTracked(), 0)
+        sessionTracked = tonumber(V.Time.GetSessionTracked()) or 0
     end
     if sessionTracked > difference then sessionTracked = difference end
     if sessionTracked < 0 then sessionTracked = 0 end
 
-    -- Section 37, the half that was missing: the elapsed played time has to be
-    -- *explained* by play this session actually watched, not merely be small.
-    --
-    -- Without this, the ten-minute tolerance is a ten-minute window to do
-    -- something prohibited and then undo it -- export, break a rule, relog,
-    -- import. The relog is what the check catches: a fresh session has tracked
-    -- almost nothing, while the server's clock kept running through whatever
-    -- was done before it. Legitimate transfers look nothing like that, because
-    -- the minutes between export and import were either spent logged out (which
-    -- the server does not count either) or spent playing here, tracked.
+    -- The elapsed played time has to be *explained* by play this session watched,
+    -- not merely be small. Without this the tolerance is a ten-minute window to
+    -- do something prohibited and then undo it: export, break a rule, relog,
+    -- import. The relog is what this catches -- a fresh session has tracked
+    -- almost nothing while the server's clock kept running.
     local unaccounted = difference - sessionTracked
     if unaccounted > X.UNACCOUNTED_ALLOWANCE then
         return false, string.format(
@@ -410,18 +626,13 @@ function X.Reconcile(fields, serverPlayed)
     return true, nil, sessionTracked
 end
 
--- Pessimising merge (plan sections 37 and 40) ------------------------------------
+-- Pessimising merge ----------------------------------------------------------------
 --
--- An import brings state from elsewhere; it must never be able to *improve* on
--- what this machine has already seen with its own eyes. Section 40 says local
--- activity is not simply overwritten, and until now only tracked time was
--- merged -- so a record could be exported, a rule broken, and the export
--- imported back over the evidence.
---
--- The rule is the same one V.SetStatus enforces everywhere else: certification
--- only ever moves downward. Every field below therefore takes whichever side is
--- worse for the player, so a transfer can restore a history without erasing a
--- finding.
+-- An import brings state from elsewhere; it must never improve on what this
+-- machine has seen with its own eyes. The rule is the one V.SetStatus enforces
+-- everywhere else -- certification only ever moves downward -- so every field
+-- takes whichever side is worse, and a transfer can restore a history without
+-- erasing a finding.
 
 local function WorseStatus(a, b)
     if not a or a == "" then return b end
@@ -448,13 +659,11 @@ end
 
 local function MergeWarnings(target, localWarnings)
     if type(localWarnings) ~= "table" then return end
-    target = target or {}
     for kind, count in pairs(localWarnings) do
         target[kind] = HigherCount(target[kind], count)
     end
 end
 
--- Fold everything this machine already knows into the freshly imported record.
 local function PessimiseAgainstLocal(record, previous)
     if type(previous) ~= "table" then return false end
 
@@ -473,7 +682,6 @@ local function PessimiseAgainstLocal(record, previous)
     noteStatus(rd, pd.status)
     noteStatus(rf, pf.status)
 
-    -- A cap earned here outranks a looser one in the transfer.
     rd.highestVerifiedTier = LowerTier(rd.highestVerifiedTier, pd.highestVerifiedTier)
     rd.permanentCapTier    = LowerTier(rd.permanentCapTier, pd.permanentCapTier)
     rd.deathFloorTier      = LowerTier(rd.deathFloorTier, pd.deathFloorTier)
@@ -490,8 +698,6 @@ local function PessimiseAgainstLocal(record, previous)
     MergeWarnings(rd.warnings, pd.warnings)
     MergeWarnings(rf.warnings, pf.warnings)
 
-    -- A suspension observed here survives the import, so a paused run cannot be
-    -- un-paused by restoring an older string.
     if pf.suspended then rf.suspended = true end
     if pf.claimLapsed then rf.claimLapsed = true end
     if type(pf.restoreAtTracked) == "number" then
@@ -508,9 +714,23 @@ local function PessimiseAgainstLocal(record, previous)
     record.economy.money.anomalies   = HigherCount(record.economy.money.anomalies, pem.anomalies)
     record.economy.items.anomalies   = HigherCount(record.economy.items.anomalies, pei.anomalies)
 
-    -- Keep whichever chain has seen more. A local chain that is further along
-    -- covers events the export never knew about, and discarding it would throw
-    -- away the tamper evidence for exactly those events.
+    -- Durability evidence: keep whichever side records the *lower* remaining
+    -- durability for a slot, so an import cannot restore a healthier reading and
+    -- hide a repair that happened here.
+    local pdur = previous.durabilityState
+    if type(pdur) == "table" and type(pdur.slots) == "table" then
+        record.durabilityState = record.durabilityState or { slots = {}, established = true }
+        local slots = record.durabilityState.slots
+        for slot, entry in pairs(pdur.slots) do
+            local mine = slots[slot]
+            if type(entry) == "table" and (not mine or (entry.cur or 0) < (mine.cur or 0)) then
+                slots[slot] = { cur = entry.cur, max = entry.max, id = entry.id, guid = entry.guid }
+            end
+        end
+    end
+
+    -- Keep whichever chain has seen more; a local chain further along covers
+    -- events the export never knew about.
     local pc = previous.chain or {}
     if (tonumber(pc.sequence) or 0) > (tonumber(record.chain.sequence) or 0) then
         record.chain.head = pc.head or record.chain.head
@@ -520,8 +740,9 @@ local function PessimiseAgainstLocal(record, previous)
     return changed
 end
 
--- Overwrite this character's record from a validated transfer.
-local function ApplyFields(fields, serverPlayed, creditSeconds)
+-- Apply -------------------------------------------------------------------------------
+
+local function ApplyFields(decoded, serverPlayed, creditSeconds)
     local key, previousRecord = V.FindRecordKey()
     if not key then
         key = (Rustcore and Rustcore.GetCharacterKey and Rustcore.GetCharacterKey())
@@ -530,100 +751,93 @@ local function ApplyFields(fields, serverPlayed, creditSeconds)
 
     local record = {
         schemaVersion = V.SCHEMA_VERSION,
-        createdAt     = Num(fields.cr, time and time() or 0),
+        createdAt     = decoded.createdAt or (time and time() or 0),
         addonVersion  = V.GetAddonVersion(),
         identity      = V.BuildIdentity(),
-        origin        = fields.org ~= "" and fields.org or "IMPORT",
+        origin        = decoded.origin or "IMPORT",
         migrationComplete = true,
         importedAt    = time and time() or 0,
     }
 
-    record.difficulty = V.NewTrack(fields.ds ~= "" and fields.ds or V.STATUS.UNVERIFIED)
-    record.difficulty.highestVerifiedTier = Num(fields.dt, 0)
-    record.difficulty.permanentCapTier    = tonumber(fields.dc)
-    record.difficulty.pendingCapTier      = tonumber(fields.dp)
-    record.difficulty.deathFloorTier      = tonumber(fields.dfl)
-    record.difficulty.startedAtLevel      = tonumber(fields.dl)
+    record.difficulty = V.NewTrack(decoded.dStatus or V.STATUS.UNVERIFIED)
+    record.difficulty.highestVerifiedTier = decoded.dTier or 0
+    record.difficulty.permanentCapTier    = decoded.dCap
+    record.difficulty.pendingCapTier      = decoded.dPending
+    record.difficulty.deathFloorTier      = decoded.dFloor
+    record.difficulty.startedAtLevel      = decoded.dLevel
     record.difficulty.currentTier         = V.GetCurrentTier()
-    record.difficulty.deaths              = Num(fields.dd, 0)
-    record.difficulty.repairViolations    = Num(fields.drv, 0)
-    record.difficulty.warnings            = UnpackWarnings(fields.dw)
+    record.difficulty.deaths              = decoded.dDeaths or 0
+    record.difficulty.repairViolations    = decoded.dRepairs or 0
+    record.difficulty.warnings            = decoded.dWarnings or {}
 
-    record.selfFound = V.NewTrack(fields.ss ~= "" and fields.ss or V.STATUS.UNCERTAIN)
-    record.selfFound.startedAtLevel   = tonumber(fields.sl)
-    record.selfFound.claimed          = Num(fields.scl, 0) == 1
-    record.selfFound.qualifyFromLevel = tonumber(fields.sql)
-    record.selfFound.claimedAtLevel   = tonumber(fields.sal)
-    record.selfFound.claimLapsed      = Num(fields.slp, 0) == 1 or nil
-    record.selfFound.suspended        = Num(fields.ssp, 0) == 1 or nil
-    record.selfFound.restoreAtTracked = tonumber(fields.srt)
-    record.selfFound.violations       = Num(fields.sv, 0)
-    record.selfFound.lastViolation    = fields.svr ~= "" and fields.svr or nil
-    record.selfFound.warnings         = UnpackWarnings(fields.sw)
+    local flags = decoded.sFlags or 0
+    local function hasFlag(bit) return floor(flags / bit) % 2 == 1 end
+
+    record.selfFound = V.NewTrack(decoded.sStatus or V.STATUS.UNCERTAIN)
+    record.selfFound.startedAtLevel   = decoded.sLevel
+    record.selfFound.qualifyFromLevel = decoded.sQualify
+    record.selfFound.claimedAtLevel   = decoded.sClaimLevel
+    record.selfFound.claimed          = hasFlag(SF_CLAIMED)
+    record.selfFound.claimLapsed      = hasFlag(SF_LAPSED) or nil
+    record.selfFound.suspended        = hasFlag(SF_SUSPENDED) or nil
+    record.selfFound.restoreAtTracked = decoded.sRestoreAt
+    record.selfFound.violations       = decoded.sViolations or 0
+    record.selfFound.lastViolation    = (decoded.sViolCode or 0) > 0
+        and VIOLATION_TEXT[decoded.sViolCode] or nil
+    record.selfFound.warnings         = decoded.sWarnings or {}
 
     record.time = {
-        anchorPlayed       = Num(fields.ta, 0),
+        anchorPlayed       = decoded.anchor or 0,
         lastServerPlayed   = serverPlayed,
-        -- Section 40: the imported history plus the clean minutes this PC
-        -- watched since login.
-        trackedSinceAnchor = Num(fields.tt, 0) + (creditSeconds or 0),
-        untrackedSeconds   = Num(fields.tu, 0),
-        gapBand            = fields.tb ~= "" and fields.tb or "OK",
-        sessionTracked     = nil,
+        trackedSinceAnchor = (decoded.tracked or 0) + (creditSeconds or 0),
+        untrackedSeconds   = decoded.untracked or 0,
+        gapBand            = decoded.band or "OK",
         lastPlayedCheck    = time and time() or nil,
     }
 
     record.economy = {
         money = {
-            last        = tonumber(fields.eml),
-            unexplained = Num(fields.emu, 0),
-            anomalies   = Num(fields.ema, 0),
+            last        = decoded.moneyLast,
+            lastPlayed  = decoded.moneyPlayed,
+            unexplained = decoded.moneyUnexpl or 0,
+            anomalies   = decoded.moneyAnom or 0,
         },
-        items = {
-            anomalies = Num(fields.eia, 0),
-        },
+        items = { anomalies = decoded.itemAnom or 0 },
     }
 
-    local slots = UnpackDurability(fields.du)
-    if next(slots) then
-        record.durabilityState = { slots = slots, established = true }
+    if decoded.durability then
+        record.durabilityState = { slots = decoded.durability, established = true }
     end
 
-    -- The chain continues from where the export left off rather than starting
-    -- again, so the imported head still covers everything that came before.
     record.chain = {
-        head     = fields.ch or "",
-        sequence = Num(fields.cs, 0),
+        head     = decoded.chainHead or "",
+        sequence = decoded.chainSeq or 0,
         events   = {},
     }
 
-    -- Fold in anything this machine already observed, before the imported record
-    -- becomes the live one. Nothing below this point can raise a certification.
     local keptLocal = PessimiseAgainstLocal(record, previousRecord)
     record.importKeptLocalFindings = keptLocal or nil
 
     V.GetStore()[key] = record
 
-    -- Stats (section 41). Merged the same way as everything else rather than
-    -- replaced: these only ever count upward during play, so taking the higher
-    -- of the two sides restores a history from another PC without letting an old
-    -- string quietly undo losses recorded here since it was written.
+    -- Stats. Merged rather than replaced: these only count upward during play,
+    -- so the higher of the two sides restores a history without letting an old
+    -- string undo losses recorded here since it was written.
     local stats = GetStatsTable()
     if stats then
-        stats.destroyedItems   = HigherCount(stats.destroyedItems, Num(fields.xd, 0))
-        stats.rustedItems      = HigherCount(stats.rustedItems, Num(fields.xr, 0))
-        local importedIlvl = Num(fields.xbi, 0)
-        if importedIlvl > (tonumber(stats.bestItemLostIlvl) or 0) then
-            stats.bestItemLostIlvl = importedIlvl
-            stats.bestItemLostLink = fields.xbl ~= "" and fields.xbl or nil
+        stats.destroyedItems = HigherCount(stats.destroyedItems, decoded.statBroken or 0)
+        stats.rustedItems    = HigherCount(stats.rustedItems, decoded.statRusted or 0)
+        stats.deaths         = HigherCount(stats.deaths, decoded.statDeaths or 0)
+        if (decoded.statIlvl or 0) > (tonumber(stats.bestItemLostIlvl) or 0) then
+            -- The link itself is rebuilt from the item id through GetItemInfo.
+            ApplyBestItemLink(decoded.bestItem, decoded.statIlvl)
         end
     end
 
     if V.Integrity and V.Integrity.Append then
         V.Integrity.Append("IMPORT", {
-            played  = floor(serverPlayed or 0),
-            credit  = floor(creditSeconds or 0),
-            from    = fields.av or "",
+            played = floor(serverPlayed or 0),
+            credit = floor(creditSeconds or 0),
         })
     end
     if V.Integrity and V.Integrity.Seal then V.Integrity.Seal() end
@@ -631,39 +845,69 @@ local function ApplyFields(fields, serverPlayed, creditSeconds)
     return record
 end
 
--- Section 35. Parses, then waits for a fresh /played before committing.
+-- Flows ----------------------------------------------------------------------------
+
+function X.BeginExport(callback)
+    local record = V.GetRecord()
+    if not record then
+        callback(nil, "no verification record for this character")
+        return
+    end
+
+    local done = false
+    -- The played figure comes from the TIME_PLAYED_MSG payload rather than
+    -- Time.lua's stored copy: both modules listen for that event and the order
+    -- their frames are called in is not defined.
+    local function finish(played)
+        if done then return end
+        done = true
+        local str, err = X.BuildString(played)
+        if str and V.Integrity and V.Integrity.Append then
+            V.Integrity.Append("EXPORT", { played = floor(played or 0) })
+        end
+        callback(str, err)
+    end
+
+    X.pendingExport = finish
+    if V.Time and V.Time.Request then V.Time.Request() end
+
+    if C_Timer and C_Timer.After then
+        C_Timer.After(X.PLAYED_TIMEOUT, function()
+            if X.pendingExport ~= finish then return end
+            X.pendingExport = nil
+            finish()
+        end)
+    else
+        finish()
+    end
+end
+
 function X.BeginImport(text, callback)
-    local fields, err = X.Parse(text)
-    if not fields then
+    local decoded, err = X.Parse(text)
+    if not decoded then
         callback(false, err)
         return
     end
 
     local done = false
-    -- `played` comes straight from the TIME_PLAYED_MSG payload rather than from
-    -- Time.lua's stored figure: both modules listen for that event and the order
-    -- the two frames are called in is not defined, so reading Time's copy could
-    -- pick up the previous poll's value instead of the reply just received.
     local function finish(played)
         if done then return end
         done = true
 
         local serverPlayed = played or (V.Time and V.Time.GetLastServerPlayed()) or 0
-        local ok, reason, credit = X.Reconcile(fields, serverPlayed)
+        local ok, reason, credit = X.Reconcile(decoded, serverPlayed)
         if not ok then
             callback(false, reason)
             return
         end
 
-        ApplyFields(fields, serverPlayed, credit)
+        ApplyFields(decoded, serverPlayed, credit)
 
-        -- The imported money figure belongs to the other PC's last reading, so
-        -- the next PLAYER_MONEY here would otherwise measure a delta against a
-        -- number that was never this session's. Adopt the real balance instead.
+        -- The imported money figures belong to the other PC's last reading, so
+        -- the live comparison here starts from the real balance instead.
         if V.Money and V.Money.Rebase then V.Money.Rebase() end
         if V.Inventory and V.Inventory.Rebase then V.Inventory.Rebase() end
 
-        -- Repaint everything the imported state could have changed.
         if RustcoreDragon then
             if RustcoreDragon.RefreshPlayerFrame then RustcoreDragon.RefreshPlayerFrame() end
             if RustcoreDragon.RefreshTargetFrame then RustcoreDragon.RefreshTargetFrame() end
@@ -677,8 +921,6 @@ function X.BeginImport(text, callback)
         local message = string.format("Verification imported. %d clean minute(s) on this PC kept.",
             floor((credit or 0) / 60))
         if record and record.importKeptLocalFindings then
-            -- Said plainly, because otherwise a player would see "imported" and
-            -- reasonably expect the imported status to be the one they now have.
             message = message .. " This computer had already recorded something "
                 .. "the transfer did not, so that was kept."
         end
@@ -700,8 +942,6 @@ function X.BeginImport(text, callback)
     end
 end
 
--- The /played reply both flows are waiting on. `totalPlayed` is the payload
--- figure, forwarded so neither flow has to read Time.lua's copy.
 function X.OnTimePlayed(totalPlayed)
     local exportCallback = X.pendingExport
     local importCallback = X.pendingImport

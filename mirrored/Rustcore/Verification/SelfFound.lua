@@ -83,13 +83,21 @@ function SF.CaptureBaseline()
         if id then equipped[slot] = id end
     end
 
-    local bags, bagTotal = BagItemCounts()
+    -- Only the total, never the per-item table.
+    --
+    -- The full bag contents used to be written here, and nothing ever read them
+    -- back: every inventory comparison Rustcore makes is between two snapshots
+    -- taken in the same session, held in Inventory.lua as a module local. So the
+    -- table was pure weight in SavedVariables, growing with the player's bags,
+    -- for evidence that was never consulted. Durability snapshots are what carry
+    -- item evidence across a logout, and those are far smaller and far more
+    -- meaningful.
+    local _, bagTotal = BagItemCounts()
     return {
         takenAt  = time and time() or 0,
         level    = V.GetPlayerLevel(),
         money    = GetMoney and GetMoney() or 0,
         played   = V.Time and V.Time.GetLastServerPlayed and V.Time.GetLastServerPlayed() or 0,
-        bags     = bags,
         bagCount = bagTotal,
         equipped = equipped,
     }

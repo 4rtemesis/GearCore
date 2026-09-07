@@ -276,7 +276,13 @@ function D.OnUnexplainedRepairEvidence(detail)
 
     if count >= 2 then
         -- Repeated unexplained increases stop being a coincidence.
-        V.SetStatus("difficulty", V.STATUS.FAILED, "repeated unexplained durability increase")
+        -- UNVERIFIED, not FAILED. A durability figure going up is evidence of a
+        -- repair, not an observation of one: item swaps, server corrections and
+        -- identity ambiguity between two copies of the same item can all produce
+        -- it. Repeating makes coincidence unlikely, but it never turns inference
+        -- into something Rustcore watched happen -- and FAILED is reserved for
+        -- what it watched. An actual observed repair still fails, above.
+        V.SetStatus("difficulty", V.STATUS.UNVERIFIED, "repeated unexplained durability increase")
     end
     RefreshPortrait()
     return count
@@ -324,11 +330,13 @@ end
 function D.GetPortraitTier()
     local track = V.GetTrack("difficulty")
     if not track then
-        -- No record. Migration creates one during ADDON_LOADED, long before the
-        -- frames first paint, so this only happens when verification is
-        -- unavailable entirely -- and blanking a portrait the player already had
-        -- would be the wrong way to be wrong.
-        return V.GetCurrentTier()
+        -- No record, so nothing has been verified. This used to fall back to the
+        -- selected preset, which meant the dragon showed the difficulty the
+        -- player had merely *chosen* whenever verification was unavailable --
+        -- exactly the claim the dragon is supposed to not make. A missing record
+        -- is an absence of evidence, and the honest answer to "what is this
+        -- character verified for" is then nothing at all.
+        return nil
     end
 
     if not V.IsCertified(track.status) then return nil end

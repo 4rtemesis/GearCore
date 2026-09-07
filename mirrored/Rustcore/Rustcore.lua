@@ -253,15 +253,17 @@ function Rustcore.GetSelfFoundIconState()
         return "warning"
     end
 
-    -- Verification has the final say once it has a record for this character.
-    -- Absence of a record is not treated as a failure: it means verification is
-    -- unavailable (an older save, or the module failed to load), and blanking a
-    -- buff the player already had would be the wrong way to be wrong.
+    -- Verification has the final say, and its absence is not a pass.
+    --
+    -- This used to report "verified" when no record existed, on the reasoning
+    -- that a load failure should not blank a buff the player already had. But
+    -- the buff is a claim that Rustcore is vouching for this run, and it is also
+    -- what peers are told, so answering "verified" when verification cannot
+    -- answer at all is the one direction this must not fail in.
     local V = RustcoreVerification
-    if V and V.GetTrack and V.GetTrack("selfFound") then
-        return V.IsSelfFoundCertified() and "verified" or nil
-    end
-    return "verified"
+    if not (V and V.GetTrack and V.IsSelfFoundCertified) then return nil end
+    if not V.GetTrack("selfFound") then return nil end
+    return V.IsSelfFoundCertified() and "verified" or nil
 end
 
 -- Spell 431567 "Self-Found Adventurer" is Blizzard's real Hardcore

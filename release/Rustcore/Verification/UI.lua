@@ -25,22 +25,29 @@ local BODY_FONT_PATH = Rustcore.GetAssetPath("Font/BPpong.otf")
 -- Colour and wording per status. The word is what the player reads first, so it
 -- says what Rustcore can vouch for rather than what the player may have done.
 -- The status word carries the outlook by itself, so there is no second line
--- spelling it out. Two rules make that work, and the colours follow them:
+-- spelling it out. The colours follow it:
 --
---   red    the run is over. Only ever used where nothing will bring it back.
+--   green  certified. VERIFIED and WARNING both land here.
 --   blue   not certified yet, but still reachable by playing on.
+--   amber  over, but through absence of evidence rather than wrongdoing.
+--   red    over, because a rule was observed being broken.
 --
--- UNVERIFIED therefore reads as the final "Not verified", and anything Rustcore
--- merely needs more time for is Uncertain instead -- which is why a suspension
--- and a late start share that word: from the player's side they are the same
--- situation, and the difference between them is Rustcore's business.
+-- That last split is the important one, and it is why UNVERIFIED and FAILED are
+-- not the same colour or the same word:
+--
+--   UNVERIFIED  Rustcore never saw enough to vouch for the run. No accusation.
+--   FAILED      Rustcore watched a challenge rule being broken.
+--
+-- Anything Rustcore merely needs more time for is Uncertain instead -- which is
+-- why a suspension and a late start share that word: from the player's side they
+-- are the same situation, and the difference is Rustcore's business.
 local STATUS_LOOK = {
-    VERIFIED   = { 0.35, 0.9,  0.35, "Verified",     "Rustcore has detected no rule violations." },
-    WARNING    = { 1.0,  0.82, 0.2,  "Verified",     "Something unexplained was noted. Certification still stands." },
+    VERIFIED   = { 0.35, 0.9,  0.35, "Verified",     "No rule violations detected." },
+    WARNING    = { 0.35, 0.9,  0.35, "Verified",     "Something unusual was noted along the way, but the certification stands." },
     SUSPENDED  = { 0.55, 0.75, 0.95, "Uncertain",    "Not certified yet. Keep playing and it will be." },
     UNCERTAIN  = { 0.55, 0.75, 0.95, "Uncertain",    "Still being observed. Keep playing to earn certification." },
-    UNVERIFIED = { 0.9,  0.3,  0.3,  "Not verified", "This run can no longer be certified." },
-    FAILED     = { 0.9,  0.3,  0.3,  "Not verified", "This run can no longer be certified." },
+    UNVERIFIED = { 0.85, 0.6,  0.3,  "Not verified", "Rustcore does not have enough evidence to verify this run. No rule violation was detected." },
+    FAILED     = { 0.9,  0.3,  0.3,  "Failed",       "A challenge rule violation was detected." },
 }
 
 local function Look(status)
@@ -107,8 +114,13 @@ local WARNING_TEXT = {
     mailAcquisition   = "something arrived by mail",
 }
 
--- What a WARNING status is about. Named rather than counted: the question is
--- why the run is not a clean Verified, and "2" is not an answer to it.
+-- What a WARNING status is about, as a finished sentence.
+--
+-- Named rather than counted: the question is why the run is not a clean
+-- Verified, and "2" is not an answer to it. It also carries the standing clause
+-- itself, so the caller has no reason to follow it with a second, vaguer line --
+-- "something unusual was noted along the way" told a player who had simply left
+-- the addon off for an hour precisely nothing.
 local function WarningReason(track)
     local parts = {}
     for kind in pairs(track.warnings or {}) do
@@ -116,7 +128,8 @@ local function WarningReason(track)
     end
     if #parts == 0 then return nil end
     table.sort(parts)
-    return "Noted: " .. table.concat(parts, "; ") .. "."
+    local text = table.concat(parts, "; ")
+    return text:sub(1, 1):upper() .. text:sub(2) .. ". The certification stands."
 end
 
 -- The one sentence explaining the current status, or nil when the status needs
@@ -155,6 +168,9 @@ end
 local function NoteFor(trackName, track, look)
     local reason = StatusReason(trackName, track)
     local blurb = look[5]
+    -- A WARNING reason is already a complete statement including the standing
+    -- clause, so the generic line underneath would only repeat it less clearly.
+    if reason and track.status == V.STATUS.WARNING then return reason end
     if reason and blurb then return reason .. "\n" .. blurb end
     return reason or blurb or ""
 end
@@ -258,6 +274,15 @@ function UI.BuildPage(page)
     widgets.dNote:SetWidth(WIDTH)
     widgets.dNote:SetWordWrap(true)
 
+    -- Grandfathered characters. Shown because the alternative is a player
+    -- wondering why a character that predates verification is certified at all,
+    -- and concluding something is broken. It carries no penalty.
+    -- Sits beside the status word rather than under the block: it is a footnote
+    -- on how this character came to be certified, not a finding of its own, and
+    -- a line of its own gave it more weight than it deserves.
+    widgets.dOrigin = MakeText(content, 12, 0.62, 0.72, 0.58)
+    widgets.dOrigin:SetPoint("LEFT", widgets.dStatus, "RIGHT", 8, -1)
+
     -- Self-Found -------------------------------------------------------------
     -- Above Tracking Confidence: both certifications belong together, and the
     -- continuity bar is the evidence underneath them rather than a third
@@ -307,10 +332,14 @@ function UI.BuildPage(page)
         .. "Export writes everything Rustcore has tracked -- both certifications, "
         .. "your stats, and a fresh reading of your /played time -- into one line "
         .. "of text. Import it on the other PC to continue there.\n\n"
-        .. "The /played reading is what makes it trustworthy: an import is only "
-        .. "accepted within 10 minutes of the export, so an old string cannot be "
-        .. "used later to undo something. Clean minutes you played before "
-        .. "importing are kept, not discarded.")
+        -- The practical advice matters more here than the reasoning behind the
+        -- rule: a player who keeps playing after exporting will have their
+        -- import refused, and the only thing that prevents it is knowing to log
+        -- out promptly.
+        .. "An import is only accepted within 10 minutes of in-game played time "
+        .. "after the export, so log "
+        .. "out soon after copying the string. Playing on afterwards is time the "
+        .. "transfer cannot account for.")
 
     local exportBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
     exportBtn:SetSize(110, 24)
@@ -423,6 +452,7 @@ function UI.BuildPage(page)
             widgets.dStatus:SetTextColor(0.7, 0.7, 0.7)
             widgets.dTier:SetText("")
             widgets.dNote:SetText("Rustcore has not started tracking this character yet.")
+            widgets.dOrigin:SetText("")
             ShowSelfFound(false)
             widgets.bar:SetFraction(0)
             widgets.cDetail:SetText("")
@@ -453,12 +483,17 @@ function UI.BuildPage(page)
         if difficulty.permanentCapTier then
             -- Kept because a cap is a live limit on what this run can ever
             -- certify, not a tally of things that have happened to it.
-            tierLine = tierLine .. "  (capped at "
+            tierLine = tierLine .. "  (Capped at "
                 .. V.GetTierName(difficulty.permanentCapTier)
-                .. " by an earlier death under weaker rules)"
+                .. " by a death under weaker rules)"
         end
         widgets.dTier:SetText(tierLine)
         widgets.dNote:SetText(NoteFor("difficulty", difficulty, dLook))
+
+        -- Reuses record.origin, which the record has carried since it was
+        -- created; nothing extra is stored or transferred for this.
+        widgets.dOrigin:SetText(record.origin == "LEGACY_MIGRATION"
+            and "(grandfathered)" or "")
 
         -- Self-Found. Follows the checkbox, not the record: switching the mode
         -- off is opting out of it, and a block reporting on a mode the player
@@ -502,11 +537,13 @@ function UI.BuildPage(page)
             widgets.sNote:SetText(sNote)
         end
 
-        -- Tracking confidence. The fraction is how much of the allowance is
-        -- still unspent, so a full green bar means Rustcore watched essentially
-        -- everything and an empty one means it lost the thread.
+        -- Tracking confidence. The bar runs to the point where the certification
+        -- would actually be lost, not to the point where a note gets recorded --
+        -- drawing it against the warning line made a character sitting on a
+        -- perfectly survivable gap look like it had run out entirely, when in
+        -- fact it had well over half its allowance left.
         local untracked = timeState.untrackedSeconds or 0
-        local allowed = (V.Time and V.Time.GetAllowedGap and V.Time.GetAllowedGap()) or 1
+        local allowed = (V.Time and V.Time.GetSevereGap and V.Time.GetSevereGap()) or 1
         -- Anything under the deadband reads as full. Time.lua no longer records
         -- gaps that small, so this only shows up on a record written before that
         -- change -- but a bar sitting a hair short of the end over a few seconds
@@ -517,19 +554,25 @@ function UI.BuildPage(page)
 
         local band = timeState.gapBand or "OK"
         local cLines = {}
-        cLines[1] = string.format("Tracked: %s     Missing: %s",
+        cLines[1] = string.format("Observed: %s     Not observed: %s",
             FormatDuration(timeState.trackedSinceAnchor or 0), FormatDuration(untracked))
+        -- Worded throughout as time Rustcore did not see, never as something the
+        -- player did. A gap almost always means the addon was switched off or
+        -- the client crashed, and a tolerated one is not a mark against anybody.
         if band == "OK" then
             -- Measured against the same deadband as the bar and the figure above
             -- it, so all three agree. Below it there is nothing to report, not a
             -- small amount of something.
             cLines[#cLines + 1] = untracked >= ignore
-                and "Rustcore has watched enough of this character to vouch for it."
-                or "Rustcore has watched this character continuously."
+                and "Rustcore has observed enough of this character to vouch for it."
+                or "Rustcore has observed this character continuously."
         elseif band == "WARNING" then
-            cLines[#cLines + 1] = "Some play happened while Rustcore was not running."
+            cLines[#cLines + 1] = "Some play happened while Rustcore was not running. "
+                .. "That is within tolerance and the certification stands."
         else
-            cLines[#cLines + 1] = "Too much play happened without Rustcore watching to certify this character."
+            cLines[#cLines + 1] = "Too much of this character's play happened without "
+                .. "Rustcore running for it to be certified. This is missing evidence, "
+                .. "not a rule violation."
         end
 
         -- How much more play covers the missing time. The allowance is a
@@ -551,14 +594,10 @@ function UI.BuildPage(page)
             end
         end
 
-        -- Said plainly, because the bar refilling and the certification coming
-        -- back are not the same thing. A gap band only ever escalates, so play
-        -- that covers the gap protects what is left rather than undoing what
-        -- has already been lost -- and implying otherwise would be the one
-        -- thing worse than saying nothing.
-        if band == "WARNING" then
-            cLines[#cLines + 1] = "The note it left on the record stays either way."
-        elseif band == "SEVERE" then
+        -- Only said where it changes what the player should expect. A lost
+        -- certification does not come back, and leaving that unsaid would invite
+        -- someone to keep playing in the belief that it will.
+        if band == "SEVERE" then
             cLines[#cLines + 1] = "Playing on will not bring this certification back."
         end
 
