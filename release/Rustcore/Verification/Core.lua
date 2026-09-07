@@ -259,6 +259,20 @@ function V.SetStatus(trackName, newStatus, reason)
 
     local previous = track.status
     track.status = newStatus
+
+    -- Kept for every degradation, not only the terminal one. The Verification
+    -- tab has to be able to say *why* a run is not certified, and UNVERIFIED is
+    -- the status a player is most likely to be looking at while wondering
+    -- exactly that -- until now the reason went into the chain event and
+    -- nowhere the player could read it.
+    --
+    -- Deliberately outside the seal: Integrity.CriticalState already covers the
+    -- status itself, and this is a label on a decision that is sealed, not a
+    -- decision of its own. Editing it in SavedVariables changes the wording of
+    -- a loss, never whether it happened.
+    track.statusReason = reason
+    track.statusAt = Now()
+
     if newStatus == V.STATUS.FAILED then
         track.failedReason = reason
         track.failedAt = Now()
@@ -475,6 +489,10 @@ function V.Init()
     -- and all of that goes through Core and Integrity, which are up by now.
     if V.SelfFound and V.SelfFound.Init then
         V.SelfFound.Init()
+    end
+    -- Before the restrictions, which hand the trade window over to it.
+    if V.Conjured and V.Conjured.Init then
+        V.Conjured.Init()
     end
     -- After SelfFound, because the restrictions report violations through
     -- V.SelfFound.Fail and read the claim it just settled.

@@ -228,6 +228,27 @@ local function OnUnitChanged(unit)
     RustcoreSelfFoundComm.RefreshOverlays()
 end
 
+-- Ask about whoever is under the cursor, without drawing anything.
+--
+-- Classic has no mouseover unit frame, so there is nothing to decorate here.
+-- The point is timing: the dragon on the target portrait and the target's
+-- Self-Found buff both read a cache that a whisper round trip fills, and until
+-- now that trip only started on PLAYER_TARGET_CHANGED -- so the art arrived a
+-- beat after the frame did, and every target visibly popped in. A player's
+-- cursor is on someone before their click is, so the answer is usually already
+-- home by the time the target frame draws.
+--
+-- Safe to fire freely: RequestStatus is de-duplicated by QUERY_TTL, so sweeping
+-- the cursor across a crowded bank sends one whisper per player per 15 seconds
+-- rather than one per frame.
+local function OnMouseoverChanged()
+    if UnitExists("mouseover") and UnitIsPlayer("mouseover") then
+        -- Not filtered for the player themselves here; RequestStatus already
+        -- refuses to query itself, and one owner for that rule is enough.
+        RequestStatus(GetUnitFullName("mouseover"))
+    end
+end
+
 local function RefreshWatchedUnits()
     for _, entry in ipairs(WATCHED_FRAMES) do
         if UnitExists(entry.unit) and UnitIsPlayer(entry.unit) and not UnitIsUnit(entry.unit, "player") then
@@ -251,6 +272,7 @@ eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("PLAYER_FOCUS_CHANGED")
+eventFrame:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("CHAT_MSG_ADDON")
 
@@ -272,6 +294,9 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
 
     elseif event == "PLAYER_FOCUS_CHANGED" then
         OnUnitChanged("focus")
+
+    elseif event == "UPDATE_MOUSEOVER_UNIT" then
+        OnMouseoverChanged()
 
     elseif event == "GROUP_ROSTER_UPDATE" then
         RefreshWatchedUnits()

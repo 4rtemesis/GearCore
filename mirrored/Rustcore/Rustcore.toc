@@ -14,6 +14,7 @@ Verification\Time.lua
 Verification\Migration.lua
 Verification\Difficulty.lua
 Verification\SelfFound.lua
+Verification\Conjured.lua
 Verification\SelfFoundRestrict.lua
 Verification\NPCMailDB.lua
 Verification\Mail.lua

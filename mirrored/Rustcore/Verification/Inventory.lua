@@ -187,7 +187,63 @@ local function Emit(score, detail)
     if V.Integrity and V.Integrity.Seal then V.Integrity.Seal() end
 end
 
+-- Expected acquisitions ------------------------------------------------------
+--
+-- Mirrors E.ExpectMoney / E.ConsumeExpectedMoney in Economy.lua: something else
+-- in Rustcore already knows where these items came from, so the scorer should
+-- not be asked to guess. The conjured trade exception is the caller -- a stack
+-- of high-rank conjured water carries a required level above a low-level
+-- recipient, which is most of a warning on its own, and warning a player about
+-- the trade the addon just cleared for them would be nonsense.
+--
+-- Two properties keep this from becoming a blanket excuse. It is *quantitative*:
+-- an expectation of 20 covers 20 and the twenty-first is scored normally. And it
+-- expires, because the expectation is registered when a trade window closes and
+-- a cancelled trade delivers nothing -- without the deadline, an unspent
+-- expectation would sit there waiting to absorb an unrelated acquisition hours
+-- later.
+local EXPECT_TTL = 30
+
+local expected = {}
+
+local function Now()
+    return (GetTime and GetTime()) or 0
+end
+
+function Inv.ExpectItem(itemID, quantity)
+    quantity = tonumber(quantity) or 0
+    if quantity <= 0 then return end
+
+    local key = tostring(itemID)
+    local entry = expected[key]
+    if not entry or Now() >= entry.expires then
+        entry = { count = 0 }
+        expected[key] = entry
+    end
+    entry.count = entry.count + quantity
+    entry.expires = Now() + EXPECT_TTL
+end
+
+-- How much of `quantity` is still unaccounted for.
+function Inv.ConsumeExpected(itemID, quantity)
+    local key = tostring(itemID)
+    local entry = expected[key]
+    if not entry then return quantity end
+    if Now() >= entry.expires then
+        expected[key] = nil
+        return quantity
+    end
+
+    local used = entry.count < quantity and entry.count or quantity
+    entry.count = entry.count - used
+    if entry.count <= 0 then expected[key] = nil end
+    return quantity - used
+end
+
 local function Report(itemID, quantity)
+    quantity = Inv.ConsumeExpected(itemID, quantity)
+    if quantity <= 0 then return end
+
     local score, detail = Inv.Score(itemID, quantity)
     if not score then
         -- Not cached. GetItemInfo has queried the server; the answer arrives on

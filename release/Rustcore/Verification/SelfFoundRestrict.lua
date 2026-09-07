@@ -44,6 +44,16 @@ function R.IsEnforcing()
     return Setting("selfFound") and true or false
 end
 
+-- The conjured exception (Conjured.lua) narrows enforcement rather than lifting
+-- it: the window is allowed to open, but only a window Rustcore has read and
+-- found to contain nothing but conjured goods can be accepted. Everything below
+-- this line -- the sampling, the settle check, the auction house -- is unchanged
+-- by it, because the exception governs what may be attempted and those govern
+-- what actually happened.
+local function ExceptionActive()
+    return (V.Conjured and V.Conjured.IsExceptionActive and V.Conjured.IsExceptionActive()) and true or false
+end
+
 -- Detection only matters while there is a live claim to lose. A track that is
 -- already FAILED cannot fail again, and one that was never claimed has nothing
 -- to judge.
@@ -107,16 +117,24 @@ local function Money()
     return (GetMoney and GetMoney()) or 0
 end
 
--- The first item id whose count rose between two samples, with how many
--- appeared. Only gains are reported: section 26 is explicit that unexplained
--- losses are not a Self-Found concern, and a trade the player gave things away
--- in must never be mistaken for one they received in.
-local function FirstGain(before, after)
+-- Every item id whose count rose between two samples, with how many appeared.
+-- Only gains are reported: section 26 is explicit that unexplained losses are
+-- not a Self-Found concern, and a trade the player gave things away in must
+-- never be mistaken for one they received in.
+--
+-- All of them rather than the first, because a permitted conjured gain may sit
+-- in front of a prohibited one in an unordered table, and stopping at the first
+-- gain would let the order of `pairs` decide whether the trade was caught.
+local function Gains(before, after)
+    local found = nil
     for id, count in pairs(after) do
         local had = before[id] or 0
-        if count > had then return id, count - had end
+        if count > had then
+            found = found or {}
+            found[id] = count - had
+        end
     end
-    return nil
+    return found
 end
 
 -- Violation ------------------------------------------------------------------
@@ -131,16 +149,33 @@ end
 --
 -- The window is closed on sight, so a completed trade should be unreachable.
 -- The sampling below is the backstop for the cases where it is not: the client
--- refusing the close, another addon reopening it, or a build where the timing
--- differs. It measures what actually landed in the bags rather than what the
--- trade window advertised, because that is the thing section 19 prohibits and
--- the only thing Rustcore can state it observed.
+-- refusing the close, another addon reopening it, a build where the timing
+-- differs, or the conjured exception deliberately letting one through. That
+-- last case is why the backstop matters more now than it did when it was only
+-- ever insurance: it is the one path where a trade is *expected* to complete,
+-- and the only thing that can tell an expected completion from an abused one is
+-- a measurement taken afterwards.
+--
+-- It measures what actually landed in the bags rather than what the trade
+-- window advertised, because that is the thing section 19 prohibits and the
+-- only thing Rustcore can state it observed.
 
 local trade = {}
 
 local function TradeSample()
     trade.bags = BagCounts()
-    trade.money = Money()
+
+    -- Money the player has already moved into the trade window is still theirs
+    -- until the exchange happens, but it is not necessarily still in GetMoney().
+    -- A sample taken before the window opened and one taken with an offer
+    -- sitting in it have to mean the same thing, or cancelling the trade gives
+    -- the copper back and the addon reads the refund as a gain -- and fails the
+    -- track over a trade that never happened.
+    --
+    -- Adding it back cannot create leniency in the other direction: what is
+    -- offered and what is received are separate fields, so a real receipt is
+    -- still a gain against this figure.
+    trade.money = Money() + ((GetPlayerTradeMoney and GetPlayerTradeMoney()) or 0)
 end
 
 -- Compare against the sample taken while the trade was open. Runs a moment
@@ -150,17 +185,33 @@ end
 -- The sample is passed in rather than read from `trade` here, because a second
 -- trade opening inside that delay would otherwise replace the very snapshot
 -- this comparison depends on.
-local function TradeSettle(before, beforeMoney)
+--
+-- `allowance` is what the conjured exception cleared on the way through, and it
+-- is subtracted from the observed gain rather than trusted in place of it. The
+-- gate can only see what the window advertised; this sees what arrived. So a
+-- conjured trade that somehow delivered something else still fails here, and
+-- the exception cannot become a hole by being wrong about its own contents.
+local function TradeSettle(before, beforeMoney, allowance)
     if not before then return end
     if not ShouldJudge() then return end
 
-    local id, gained = FirstGain(before, BagCounts())
-    if id then
-        Fail("received an item in a player trade",
-            string.format("item %s x%d", tostring(id), gained))
-        return
+    local gains = Gains(before, BagCounts())
+    if gains then
+        for id, gained in pairs(gains) do
+            local uncovered = gained
+            if allowance and V.Conjured and V.Conjured.ConsumeAllowance then
+                uncovered = V.Conjured.ConsumeAllowance(allowance, id, gained)
+            end
+            if uncovered > 0 then
+                Fail("received an item in a player trade",
+                    string.format("item %s x%d", tostring(id), uncovered))
+                return
+            end
+        end
     end
 
+    -- Money is never covered by an allowance: the exception blocks any amount on
+    -- either side outright, so copper that arrived was never permitted.
     local now = Money()
     if now > (beforeMoney or 0) then
         Fail("received money in a player trade",
@@ -174,6 +225,14 @@ function R.OnTradeShow()
     -- happens while the option is on.
     if ShouldJudge() then TradeSample() end
     if not R.IsEnforcing() then return end
+
+    -- The exception hands the window to Conjured.lua instead of closing it. The
+    -- sample above was still taken, so whatever the gate decides, the settle
+    -- check below still judges what actually landed in the bags.
+    if ExceptionActive() then
+        if V.Conjured and V.Conjured.BeginTrade then V.Conjured.BeginTrade() end
+        return
+    end
 
     -- Deferred by one frame: the trade window is still being set up inside this
     -- event, and cancelling from underneath it is what the existing block in
@@ -196,6 +255,20 @@ function R.OnTradeAcceptUpdate(playerAccepted, targetAccepted)
     if (playerAccepted or 0) == 0 and (targetAccepted or 0) == 0 then return end
     if not trade.bags and ShouldJudge() then TradeSample() end
     if not R.IsEnforcing() then return end
+
+    -- A cleared conjured window is allowed to reach this point -- that is the
+    -- whole exception. Anything short of a cleared verdict, including one still
+    -- being read, is cancelled exactly as before.
+    --
+    -- Re-read rather than trusting the last verdict: both files handle
+    -- TRADE_ACCEPT_UPDATE and the order between two frames on one event is not
+    -- defined, so the verdict standing when this runs may predate the change
+    -- that is being accepted.
+    if ExceptionActive() and V.Conjured then
+        if V.Conjured.Refresh then V.Conjured.Refresh() end
+        if V.Conjured.GetVerdict and V.Conjured.GetVerdict() == "ok" then return end
+    end
+
     if CancelTrade then CancelTrade() end
 end
 
@@ -204,12 +277,19 @@ function R.OnTradeClosed()
     -- during the delay cannot disturb this comparison.
     local before, beforeMoney = trade.bags, trade.money
     trade.bags, trade.money = nil, nil
+
+    -- Taken here rather than from an event of its own: two frames handling
+    -- TRADE_CLOSED have no defined order, and this allowance has to be detached
+    -- before the comparison it belongs to runs.
+    local allowance
+    if V.Conjured and V.Conjured.EndTrade then allowance = V.Conjured.EndTrade() end
+
     if not before then return end
 
     if C_Timer and C_Timer.After then
-        C_Timer.After(1, function() TradeSettle(before, beforeMoney) end)
+        C_Timer.After(1, function() TradeSettle(before, beforeMoney, allowance) end)
     else
-        TradeSettle(before, beforeMoney)
+        TradeSettle(before, beforeMoney, allowance)
     end
 end
 

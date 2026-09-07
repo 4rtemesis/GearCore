@@ -78,6 +78,7 @@ local defaults = {
     keepMainWeapon  = false, -- spare main weapon slot from deletion
     ignoreDeathAfterEnemyPlayerDamage = false, -- skip deletion if a hostile player damaged you during the fight
     selfFoundBuffEnabled = true, -- show verified Self-Found status as a buff icon on the player's own buff bar
+    selfFoundAllowConjured = false, -- permit player trades in which every item on both sides is conjured
     showMinimapButton = true, -- show the minimap launcher button
     broadcastDeaths = true,  -- broadcast death to Rustcore channel
     broadcastDeathsRealmWide = true, -- also broadcast via the shared realm-wide channel, not just guild/group

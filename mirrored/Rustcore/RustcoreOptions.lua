@@ -193,6 +193,7 @@ end
 -- the combat-lock state.
 local DEPENDENT_TOGGLES = {
     { parentKey = "selfFound",          field = "cbSelfFoundBuff" },
+    { parentKey = "selfFound",          field = "cbSelfFoundConjured" },
     { parentKey = "showStatsWindow",    field = "cbStatRusted" },
     { parentKey = "showStatsWindow",    field = "cbStatBroken" },
     { parentKey = "showStatsWindow",    field = "cbStatDeaths" },
@@ -264,6 +265,7 @@ local function RefreshCombatLockState(frame)
     local controls = {
         frame.cbSelfFound,
         frame.cbSelfFoundBuff,
+        frame.cbSelfFoundConjured,
         frame.cbWeapon,
         frame.cbRepair,
         frame.cbPvpDeathProtection,
@@ -602,6 +604,15 @@ local function BuildOptionsFrame()
         "Show Buff Icon",
         "Shows verified Self-Found status as a buff icon on your buff bar. Disable to leave your buff bar untouched.",
         selfFoundNote, -3, "selfFoundBuffEnabled", 4, 20, 14)
+
+    -- Second column on the buff icon's row rather than a row of its own: the
+    -- page is a fixed height and already runs to the rule below, so a new full
+    -- -width row would push the Death Rule Exceptions block off the bottom.
+    local cbSelfFoundConjured = MakeCheckbox(gameplayPage,
+        "Trade Conjured Items",
+        "Allows player trades in which every item on both sides is a conjured item and neither side offers money. "
+        .."Accept stays disabled until Rustcore has verified the contents. Anything else still ends Self-Found certification.",
+        selfFoundNote, -3, "selfFoundAllowConjured", 204, 20, 14)
 
     local exceptionsHeader = gameplayPage:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     exceptionsHeader:SetPoint("TOPLEFT", cbSelfFoundBuff, "BOTTOMLEFT", -34, -14)
@@ -1051,14 +1062,11 @@ local function BuildOptionsFrame()
         end
         for key, tab in pairs(tabs) do
             local selected = key == pageKey
-            local normalTexture = tab:GetNormalTexture()
-            if normalTexture then
-                if selected then
-                    normalTexture:SetVertexColor(0.52, 0.68, 1, 1)
-                else
-                    normalTexture:SetVertexColor(1, 1, 1, 1)
-                end
-            end
+            -- The pressed artwork is what marks the selected tab. The lock is
+            -- visual only: Blizzard holds its own micro buttons in PUSHED while
+            -- their panel is open and they stay enabled, so clicking the tab
+            -- that is already open still works.
+            tab:SetButtonState(selected and "PUSHED" or "NORMAL", selected)
             local tabText = tab:GetFontString()
             if tabText then
                 tabText:SetTextColor(selected and 1 or 0.95, selected and 0.82 or 0.78, selected and 0 or 0.52)
@@ -1112,6 +1120,7 @@ local function BuildOptionsFrame()
     -- Store refs for Refresh
     f.cbSelfFound   = cbSelfFound
     f.cbSelfFoundBuff = cbSelfFoundBuff
+    f.cbSelfFoundConjured = cbSelfFoundConjured
     f.cbWeapon      = cbWeapon
     f.cbRepair      = cbRepair
     f.cbPvpDeathProtection = cbPvpDeathProtection
@@ -1159,6 +1168,7 @@ local function BuildOptionsFrame()
         self.diffDesc:SetText(DIFF_DESCS[v])
         self.cbSelfFound:Refresh()
         self.cbSelfFoundBuff:Refresh()
+        self.cbSelfFoundConjured:Refresh()
         self.cbWeapon:Refresh()
         self.cbRepair:Refresh()
         self.cbPvpDeathProtection:Refresh()

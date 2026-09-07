@@ -55,6 +55,110 @@ local function FormatDuration(seconds)
     return string.format("%dm", minutes)
 end
 
+-- Reasons -------------------------------------------------------------------
+--
+-- Everything that costs a certification records why it did, but in the
+-- shorthand the module that found it was thinking in -- "untracked playtime:
+-- untracked=4210s allowed=300s". Section 45 asks for the conclusion *and* the
+-- evidence behind it in language a player can read, so the shorthand is
+-- translated here rather than shown raw.
+--
+-- Matched by prefix, because most of these carry a precise and unreadable
+-- detail tail. Anything unmatched falls through to the original text: every
+-- reason string in the tree is already close to English, and substituting a
+-- vaguer sentence for an unrecognised one would hide the single thing the
+-- player opened this tab to find out.
+local REASON_TEXT = {
+    { "untracked playtime",
+      "Too much play happened while Rustcore was not running." },
+    { "played time decreased",
+      "Your played time went backwards, which playing cannot cause." },
+    { "integrity",
+      "Rustcore's saved record no longer matched its own checksum." },
+    { "identity mismatch",
+      "This record was made on a different character." },
+    { "repair performed",
+      "Your gear was repaired, which this difficulty does not allow." },
+    { "repeated unexplained durability increase",
+      "Durability went up more than once with no repair Rustcore could see." },
+    { "Self-Found started level",
+      "Self-Found was switched on too late in the run to be certified." },
+    { "Self-Found switched off", "Self-Found is switched off." },
+    { "Self-Found was switched off", "Self-Found is switched off." },
+}
+
+local function Humanise(reason)
+    if type(reason) ~= "string" or reason == "" then return nil end
+    for _, entry in ipairs(REASON_TEXT) do
+        if reason:sub(1, #entry[1]) == entry[1] then return entry[2] end
+    end
+    -- Left as written, with a full stop so it sits beside the translated ones
+    -- as a sentence.
+    local text = reason:sub(1, 1):upper() .. reason:sub(2)
+    if not text:match("[%.%!%?]$") then text = text .. "." end
+    return text
+end
+
+local WARNING_TEXT = {
+    untrackedPlay     = "some play happened while Rustcore was not running",
+    unexplainedRepair = "durability went up with no repair Rustcore could see",
+    goldDiscrepancy   = "gold arrived that Rustcore could not account for",
+    itemDiscrepancy   = "an item arrived that Rustcore could not account for",
+    mailAcquisition   = "something arrived by mail",
+}
+
+-- What a WARNING status is about. Named rather than counted: the question is
+-- why the run is not a clean Verified, and "2" is not an answer to it.
+local function WarningReason(track)
+    local parts = {}
+    for kind in pairs(track.warnings or {}) do
+        parts[#parts + 1] = WARNING_TEXT[kind] or tostring(kind)
+    end
+    if #parts == 0 then return nil end
+    table.sort(parts)
+    return "Noted: " .. table.concat(parts, "; ") .. "."
+end
+
+-- The one sentence explaining the current status, or nil when the status needs
+-- no explaining -- a clean Verified is not owed an excuse.
+local function StatusReason(trackName, track)
+    local status = track.status
+
+    if status == V.STATUS.FAILED then
+        return Humanise(track.failedReason or track.statusReason)
+
+    elseif status == V.STATUS.UNVERIFIED or status == V.STATUS.SUSPENDED then
+        -- statusReason is only recorded from this version on. lastViolation is
+        -- the same string on the Self-Found track and has been stored (and
+        -- sealed) all along, so a run lost before this change still has a
+        -- cause to show. When neither exists the line is simply omitted rather
+        -- than guessed at after the fact.
+        return Humanise(track.statusReason or track.lastViolation)
+
+    elseif status == V.STATUS.UNCERTAIN then
+        -- Not a loss. This run has not earned certification yet, and
+        -- EvaluateQualification already knows exactly what is still missing.
+        local ok, why = V.EvaluateQualification(trackName)
+        if ok then return "Everything needed is in place; this certifies shortly." end
+        return Humanise(why)
+
+    elseif status == V.STATUS.WARNING then
+        return WarningReason(track)
+    end
+
+    return nil
+end
+
+-- Reason first, then the standing line for the status. On a lost run that puts
+-- the cause above "This run can no longer be certified", which is the order the
+-- sentences are actually read in.
+local function NoteFor(trackName, track, look)
+    local reason = StatusReason(trackName, track)
+    local blurb = look[5]
+    if reason and blurb then return reason .. "\n" .. blurb end
+    return reason or blurb or ""
+end
+
 local function ApplyFont(fontString, size)
     if not fontString then return end
     fontString:SetFont(BODY_FONT_PATH, size or 14, "")
@@ -139,27 +243,46 @@ function UI.BuildPage(page)
     dHeader:SetPoint("TOPLEFT", content, "TOPLEFT", PAD_L, -18)
     dHeader:SetText("Difficulty Certification")
 
-    widgets.dTier = MakeText(content, 22)
-    widgets.dTier:SetPoint("TOPLEFT", dHeader, "BOTTOMLEFT", 0, -8)
+    -- The status leads. It is the answer to the question this tab exists to
+    -- answer; which run the answer is about is a caption underneath it.
+    widgets.dStatus = MakeText(content, 22)
+    widgets.dStatus:SetPoint("TOPLEFT", dHeader, "BOTTOMLEFT", 0, -8)
 
-    widgets.dStatus = MakeText(content, 15)
-    widgets.dStatus:SetPoint("TOPLEFT", widgets.dTier, "BOTTOMLEFT", 0, -4)
+    widgets.dTier = MakeText(content, 13, 0.75, 0.75, 0.75)
+    widgets.dTier:SetPoint("TOPLEFT", widgets.dStatus, "BOTTOMLEFT", 0, -4)
+    widgets.dTier:SetWidth(WIDTH)
+    widgets.dTier:SetWordWrap(true)
 
     widgets.dNote = MakeText(content, 13, 0.75, 0.75, 0.75)
-    widgets.dNote:SetPoint("TOPLEFT", widgets.dStatus, "BOTTOMLEFT", 0, -4)
+    widgets.dNote:SetPoint("TOPLEFT", widgets.dTier, "BOTTOMLEFT", 0, -6)
     widgets.dNote:SetWidth(WIDTH)
     widgets.dNote:SetWordWrap(true)
 
+    -- Self-Found -------------------------------------------------------------
+    -- Above Tracking Confidence: both certifications belong together, and the
+    -- continuity bar is the evidence underneath them rather than a third
+    -- verdict to read between them.
+    widgets.sHeader = MakeText(content, 19, 1, 0.82, 0)
+    widgets.sHeader:SetPoint("TOPLEFT", widgets.dNote, "BOTTOMLEFT", 0, -18)
+    widgets.sHeader:SetText("Self-Found")
 
-    widgets.dDetail = MakeText(content, 13, 0.85, 0.85, 0.85)
-    widgets.dDetail:SetPoint("TOPLEFT", widgets.dNote, "BOTTOMLEFT", 0, -8)
-    widgets.dDetail:SetWidth(WIDTH)
-    widgets.dDetail:SetWordWrap(true)
+    -- Same size as the difficulty status: they are two verdicts of equal
+    -- standing, and the smaller type read as a footnote to the first one.
+    widgets.sStatus = MakeText(content, 22)
+    widgets.sStatus:SetPoint("TOPLEFT", widgets.sHeader, "BOTTOMLEFT", 0, -8)
+
+    widgets.sNote = MakeText(content, 13, 0.75, 0.75, 0.75)
+    widgets.sNote:SetPoint("TOPLEFT", widgets.sStatus, "BOTTOMLEFT", 0, -4)
+    widgets.sNote:SetWidth(WIDTH)
+    widgets.sNote:SetWordWrap(true)
 
     -- Tracking confidence ----------------------------------------------------
+    -- Re-anchored in Refresh, because the Self-Found block above it is hidden
+    -- on characters that never claimed the mode. A hidden font string keeps its
+    -- rectangle, so anchoring to it unconditionally would leave the gap behind.
     local cHeader = MakeText(content, 19, 1, 0.82, 0)
-    cHeader:SetPoint("TOPLEFT", widgets.dDetail, "BOTTOMLEFT", 0, -18)
     cHeader:SetText("Tracking Confidence")
+    widgets.cHeader = cHeader
 
     widgets.bar = MakeBar(content, WIDTH - 20)
     widgets.bar:SetPoint("TOPLEFT", cHeader, "BOTTOMLEFT", 0, -10)
@@ -169,28 +292,9 @@ function UI.BuildPage(page)
     widgets.cDetail:SetWidth(WIDTH)
     widgets.cDetail:SetWordWrap(true)
 
-    -- Self-Found -------------------------------------------------------------
-    local sHeader = MakeText(content, 19, 1, 0.82, 0)
-    sHeader:SetPoint("TOPLEFT", widgets.cDetail, "BOTTOMLEFT", 0, -18)
-    sHeader:SetText("Self-Found")
-
-    widgets.sStatus = MakeText(content, 15)
-    widgets.sStatus:SetPoint("TOPLEFT", sHeader, "BOTTOMLEFT", 0, -8)
-
-    widgets.sNote = MakeText(content, 13, 0.75, 0.75, 0.75)
-    widgets.sNote:SetPoint("TOPLEFT", widgets.sStatus, "BOTTOMLEFT", 0, -4)
-    widgets.sNote:SetWidth(WIDTH)
-    widgets.sNote:SetWordWrap(true)
-
-
-    widgets.sDetail = MakeText(content, 13, 0.85, 0.85, 0.85)
-    widgets.sDetail:SetPoint("TOPLEFT", widgets.sNote, "BOTTOMLEFT", 0, -8)
-    widgets.sDetail:SetWidth(WIDTH)
-    widgets.sDetail:SetWordWrap(true)
-
     -- Transfer ---------------------------------------------------------------
     local tHeader = MakeText(content, 19, 1, 0.82, 0)
-    tHeader:SetPoint("TOPLEFT", widgets.sDetail, "BOTTOMLEFT", 0, -18)
+    tHeader:SetPoint("TOPLEFT", widgets.cDetail, "BOTTOMLEFT", 0, -18)
     tHeader:SetText("Move To Another PC")
 
     local tBlurb = MakeText(content, 13, 0.75, 0.75, 0.75)
@@ -298,17 +402,28 @@ function UI.BuildPage(page)
 
     -- Refresh ---------------------------------------------------------------
 
+    -- Show or hide the whole Self-Found block, moving Tracking Confidence up
+    -- behind it. Anchoring is redone rather than relying on the hidden widgets
+    -- collapsing, which they do not.
+    local function ShowSelfFound(show)
+        -- Show/Hide rather than SetShown: these are font strings, and Show and
+        -- Hide are the pair every client has had on a region.
+        for _, key in ipairs({ "sHeader", "sStatus", "sNote" }) do
+            if show then widgets[key]:Show() else widgets[key]:Hide() end
+        end
+        widgets.cHeader:ClearAllPoints()
+        widgets.cHeader:SetPoint("TOPLEFT",
+            show and widgets.sNote or widgets.dNote, "BOTTOMLEFT", 0, -18)
+    end
+
     function UI.Refresh()
         local record = V.GetRecord()
         if not record then
-            widgets.dTier:SetText("No record")
-            widgets.dTier:SetTextColor(0.7, 0.7, 0.7)
-            widgets.dStatus:SetText("")
+            widgets.dStatus:SetText("No record")
+            widgets.dStatus:SetTextColor(0.7, 0.7, 0.7)
+            widgets.dTier:SetText("")
             widgets.dNote:SetText("Rustcore has not started tracking this character yet.")
-            widgets.dDetail:SetText("")
-            widgets.sStatus:SetText("")
-            widgets.sNote:SetText("")
-            widgets.sDetail:SetText("")
+            ShowSelfFound(false)
             widgets.bar:SetFraction(0)
             widgets.cDetail:SetText("")
             return
@@ -318,98 +433,136 @@ function UI.BuildPage(page)
         local selfFound  = record.selfFound or {}
         local timeState  = record.time or {}
 
-        -- Difficulty.
+        -- Difficulty. The status word is the headline and carries the status
+        -- colour; the tier under it is a grey caption saying which run that
+        -- verdict is about.
         local dLook = Look(difficulty.status)
-        local tier = difficulty.highestVerifiedTier or 0
-        if V.IsCertified(difficulty.status) and tier >= 1 then
-            widgets.dTier:SetText(V.GetTierName(tier))
-            widgets.dTier:SetTextColor(dLook[1], dLook[2], dLook[3])
-        else
-            widgets.dTier:SetText("--")
-            widgets.dTier:SetTextColor(0.6, 0.6, 0.6)
-        end
         widgets.dStatus:SetText(dLook[4])
         widgets.dStatus:SetTextColor(dLook[1], dLook[2], dLook[3])
-        widgets.dNote:SetText(dLook[5])
 
-
-        local dLines = {}
-        local selected = V.GetCurrentTier()
-        dLines[#dLines + 1] = "Playing: " .. V.GetTierName(selected)
-        if difficulty.permanentCapTier then
-            dLines[#dLines + 1] = "Capped at " .. V.GetTierName(difficulty.permanentCapTier)
-                .. " by an earlier death under weaker rules."
-        end
-        dLines[#dLines + 1] = "Deaths recorded: " .. tostring(difficulty.deaths or 0)
-        local repairWarn = V.GetWarningCount("difficulty", "unexplainedRepair")
-        dLines[#dLines + 1] = "Repair warnings: " .. tostring(repairWarn)
-            .. (difficulty.repairViolations and difficulty.repairViolations > 0
-                and ("   repairs observed: " .. difficulty.repairViolations) or "")
-        widgets.dDetail:SetText(table.concat(dLines, "\n"))
-
-        -- Tracking confidence. The fraction is how much of the allowance is
-        -- still unspent, so a full green bar means Rustcore watched essentially
-        -- everything and an empty one means it lost the thread.
-        local tracked = timeState.trackedSinceAnchor or 0
-        local untracked = timeState.untrackedSeconds or 0
-        local allowed = (V.Time and V.Time.GetAllowedGap and V.Time.GetAllowedGap()) or 1
-        local remaining = 1 - (untracked / math.max(1, allowed))
-        widgets.bar:SetFraction(remaining)
-
-        local band = timeState.gapBand or "OK"
-        local bandText =
-            band == "OK" and "Rustcore has watched this character continuously."
-            or band == "WARNING" and "Some play happened while Rustcore was not running."
-            or "Too much play happened without Rustcore watching to certify this character."
-        widgets.cDetail:SetText(string.format(
-            "%s\nTracked: %s     Unwatched: %s of %s allowed",
-            bandText, FormatDuration(tracked), FormatDuration(untracked), FormatDuration(allowed)))
-
-        -- Self-Found.
-        local claimed = selfFound.claimed
-        if not claimed then
-            widgets.sStatus:SetText("Not enabled")
-            widgets.sStatus:SetTextColor(0.6, 0.6, 0.6)
-            widgets.sNote:SetText("Turn on Self-Found under Gameplay to start a certified run.")
-            widgets.sDetail:SetText("")
+        local tier = difficulty.highestVerifiedTier or 0
+        local tierName
+        if V.IsCertified(difficulty.status) and tier >= 1 then
+            tierName = V.GetTierName(tier)
         else
+            -- Nothing is certified, so there is no certified tier to name. What
+            -- the character is actually playing is still the useful caption.
+            tierName = V.GetTierName(V.GetCurrentTier())
+        end
+        local tierLine = "Difficulty: " .. tierName
+        if difficulty.permanentCapTier then
+            -- Kept because a cap is a live limit on what this run can ever
+            -- certify, not a tally of things that have happened to it.
+            tierLine = tierLine .. "  (capped at "
+                .. V.GetTierName(difficulty.permanentCapTier)
+                .. " by an earlier death under weaker rules)"
+        end
+        widgets.dTier:SetText(tierLine)
+        widgets.dNote:SetText(NoteFor("difficulty", difficulty, dLook))
+
+        -- Self-Found. Follows the checkbox, not the record: switching the mode
+        -- off is opting out of it, and a block reporting on a mode the player
+        -- has turned off is a row of the page spent saying nothing.
+        --
+        -- The record is untouched by this. Nothing here decides anything -- the
+        -- claim, the suspension and the loss all stand exactly as they were,
+        -- and switching Self-Found back on shows them again unchanged.
+        local enabled = (Rustcore and Rustcore.GetSetting and Rustcore.GetSetting("selfFound"))
+            and selfFound.status ~= nil
+        ShowSelfFound(enabled and true or false)
+        if enabled then
             local sLook = Look(selfFound.status)
             widgets.sStatus:SetText(sLook[4])
             widgets.sStatus:SetTextColor(sLook[1], sLook[2], sLook[3])
 
             -- A suspension can say something more useful than "keep playing":
-            -- how much longer, or what is standing in the way. Folded into the
-            -- status note rather than given a line of its own.
-            local sNote = sLook[5]
+            -- how much longer, or what is standing in the way. It replaces the
+            -- standing line but not the reason, so the cause still comes first.
+            local sNote = NoteFor("selfFound", selfFound, sLook)
             if selfFound.status == V.STATUS.SUSPENDED and V.SelfFound and V.SelfFound.EvaluateRestore then
                 local ok, why, remaining = V.SelfFound.EvaluateRestore()
+                local line
                 if ok then
-                    sNote = "Ready to be certified again."
+                    line = "Ready to be certified again."
                 elseif remaining then
-                    sNote = string.format("About %s more clean play and this is certified again.",
+                    line = string.format("About %s more clean play and this is certified again.",
                         FormatDuration(remaining))
                 elseif why then
-                    sNote = "Held back: " .. why .. "."
+                    line = "Held back: " .. why .. "."
+                end
+                if line then
+                    local reason = StatusReason("selfFound", selfFound)
+                    sNote = reason and (reason .. "\n" .. line) or line
                 end
             end
+            -- The note is the whole block. What Self-Found blocks -- trading,
+            -- the auction house, mail -- is the rule text on the options page,
+            -- and repeating it here told the player nothing about their run.
+            -- All this has to say is the verdict and what is behind it.
             widgets.sNote:SetText(sNote)
-
-            local enforcing = V.SelfFoundRestrict and V.SelfFoundRestrict.IsEnforcing
-                and V.SelfFoundRestrict.IsEnforcing()
-            local sLines = {}
-            sLines[#sLines + 1] = "Trading: " .. (enforcing and "blocked" or "not enforced")
-            sLines[#sLines + 1] = "Auction House: " .. (enforcing and "blocked" or "not enforced")
-            sLines[#sLines + 1] = "Player and auction mail: "
-                .. ((V.Mail and V.Mail.IsEnforcing and V.Mail.IsEnforcing()) and "locked" or "not enforced")
-            sLines[#sLines + 1] = "Gold anomalies: "
-                .. tostring(V.GetWarningCount("selfFound", "goldDiscrepancy"))
-            sLines[#sLines + 1] = "Item anomalies: "
-                .. tostring(V.GetWarningCount("selfFound", "itemDiscrepancy"))
-            if (selfFound.violations or 0) > 0 and selfFound.lastViolation then
-                sLines[#sLines + 1] = "Lost after: " .. tostring(selfFound.lastViolation)
-            end
-            widgets.sDetail:SetText(table.concat(sLines, "\n"))
         end
+
+        -- Tracking confidence. The fraction is how much of the allowance is
+        -- still unspent, so a full green bar means Rustcore watched essentially
+        -- everything and an empty one means it lost the thread.
+        local untracked = timeState.untrackedSeconds or 0
+        local allowed = (V.Time and V.Time.GetAllowedGap and V.Time.GetAllowedGap()) or 1
+        -- Anything under the deadband reads as full. Time.lua no longer records
+        -- gaps that small, so this only shows up on a record written before that
+        -- change -- but a bar sitting a hair short of the end over a few seconds
+        -- of logout drift is exactly the thing the deadband exists to stop.
+        local ignore = (V.Time and V.Time.GAP_IGNORE) or 60
+        widgets.bar:SetFraction(untracked < ignore and 1
+            or (1 - (untracked / math.max(1, allowed))))
+
+        local band = timeState.gapBand or "OK"
+        local cLines = {}
+        cLines[1] = string.format("Tracked: %s     Missing: %s",
+            FormatDuration(timeState.trackedSinceAnchor or 0), FormatDuration(untracked))
+        if band == "OK" then
+            -- Measured against the same deadband as the bar and the figure above
+            -- it, so all three agree. Below it there is nothing to report, not a
+            -- small amount of something.
+            cLines[#cLines + 1] = untracked >= ignore
+                and "Rustcore has watched enough of this character to vouch for it."
+                or "Rustcore has watched this character continuously."
+        elseif band == "WARNING" then
+            cLines[#cLines + 1] = "Some play happened while Rustcore was not running."
+        else
+            cLines[#cLines + 1] = "Too much play happened without Rustcore watching to certify this character."
+        end
+
+        -- How much more play covers the missing time. The allowance is a
+        -- proportion of total played time, so it grows as the character does:
+        -- untracked / GAP_RATIO is the played total at which this gap is back
+        -- inside tolerance, and what is left of it is what there is to play.
+        --
+        -- The exact allowance is deliberately not printed. A number of minutes
+        -- a player is permitted to go unwatched reads as a budget to spend,
+        -- which is the opposite of what it is.
+        if untracked > allowed then
+            local ratio = (V.Time and V.Time.GAP_RATIO) or 0.02
+            local needed = (untracked / ratio) - ((V.Time and V.Time.GetLastServerPlayed
+                and V.Time.GetLastServerPlayed()) or 0)
+            if needed > 0 then
+                cLines[#cLines + 1] = string.format(
+                    "About %s more play and the missing time is back inside tolerance.",
+                    FormatDuration(needed))
+            end
+        end
+
+        -- Said plainly, because the bar refilling and the certification coming
+        -- back are not the same thing. A gap band only ever escalates, so play
+        -- that covers the gap protects what is left rather than undoing what
+        -- has already been lost -- and implying otherwise would be the one
+        -- thing worse than saying nothing.
+        if band == "WARNING" then
+            cLines[#cLines + 1] = "The note it left on the record stays either way."
+        elseif band == "SEVERE" then
+            cLines[#cLines + 1] = "Playing on will not bring this certification back."
+        end
+
+        widgets.cDetail:SetText(table.concat(cLines, "\n"))
     end
 
     UI.Refresh()

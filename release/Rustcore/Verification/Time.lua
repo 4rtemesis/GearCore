@@ -35,6 +35,15 @@ T.GAP_MINIMUM = 300
 -- UNVERIFIED. Between the two the character keeps its portrait but is flagged,
 -- which is the reasonable-doubt bias the plan asks for.
 T.GAP_SEVERE_MULTIPLIER = 2
+-- Below this, a measured gap is not recorded at all. Even measuring against one
+-- fixed anchor leaves a residue at every session boundary: the server counts the
+-- seconds between our last accrual tick and the actual disconnect, and a loading
+-- screen or a Lua error on logout adds a few more. That residue is an artefact of
+-- how the two clocks are read, not play that happened unwatched, and a minute of
+-- it is far below anything the tolerance would act on. Recording it only ever
+-- made the tracking bar sit permanently short of full for no reason a player
+-- could do anything about.
+T.GAP_IGNORE = 60
 
 local pendingSilentRequest = false
 local originalDisplayTimePlayed
@@ -276,11 +285,22 @@ local function Reconcile(totalPlayed, levelPlayed)
 
     local gap = serverElapsed - (state.trackedSinceAnchor or 0)
     if gap < 0 then gap = 0 end
+    -- Session-boundary residue is discarded rather than recorded (see GAP_IGNORE).
+    -- This is a deadband, not a discount: once a gap is real it is measured whole,
+    -- so there is no minute of unwatched play to be had by logging out often.
+    if gap < T.GAP_IGNORE then gap = 0 end
     -- Keep the worst gap ever measured. Tracked time can drift slightly ahead
     -- of the server (a long loading screen accrues on our side but not on
     -- theirs), and without this a player could idle a detected gap away.
     if gap > (state.untrackedSeconds or 0) then
         state.untrackedSeconds = gap
+    end
+    -- Clear residue recorded by an earlier version, which had no deadband. Only
+    -- ever downward and only below the deadband, so nothing that was judged
+    -- against the tolerance is touched: the band and any warning it raised stand
+    -- exactly as they were.
+    if (state.untrackedSeconds or 0) > 0 and state.untrackedSeconds < T.GAP_IGNORE then
+        state.untrackedSeconds = 0
     end
 
     ApplyGapConsequence(state, state.untrackedSeconds, T.GetAllowedGap(totalPlayed))
