@@ -123,6 +123,20 @@ end
 -- Plan section 4: detect a pre-verification character from the organic save
 -- data Rustcore already created, never from a dedicated flag.
 local function IsLegacyCharacter()
+    -- Nothing to grandfather at level 1. Grandfathering exists so a character
+    -- is not punished for play that happened before verification could watch
+    -- it, and a character who has not left the starting zone has none.
+    --
+    -- It also closes the way this used to misfire. CaptureEvidence looks under
+    -- every candidate key, so a new character sharing a name with a deleted one
+    -- reads that character's old profile and stats as its own history and is
+    -- handed a certification it never earned. Turning a brand new character
+    -- away here costs nothing: DifficultyStatusForNewCharacter already starts
+    -- level 1 at VERIFIED, so a genuine legacy character sitting at level 1
+    -- lands in exactly the same place, minus a label that would be a lie.
+    local level = UnitLevel and UnitLevel("player")
+    if level and level <= 1 then return false end
+
     if not evidence then return false end
     if evidence.statsHistory or evidence.selfFoundHistory then return true end
     if evidence.profileChanged then return true end
@@ -262,6 +276,29 @@ local function CreateRecord(key)
     return record
 end
 
+-- The key about to be written is already holding a record that is not ours.
+-- Move it aside rather than writing over it: the other character may well still
+-- exist, and destroying their certification because somebody reused their name
+-- would be this same bug pointed the other way. A record that knows its own
+-- GUID goes to that key, where its owner will find it again.
+local function DisplaceForeignRecord(store, key)
+    local other = store[key]
+    if not other then return end
+
+    local guid = other.identity and other.identity.guid
+    local target = (guid and guid ~= "") and guid or nil
+    if not target or store[target] then
+        local n = 1
+        repeat
+            target = key .. "#displaced" .. n
+            n = n + 1
+        until not store[target]
+    end
+
+    store[target] = other
+    store[key] = nil
+end
+
 function M.Run()
     if not Rustcore or not Rustcore.GetCharacterKey then return end
     M.CaptureEvidence()
@@ -273,6 +310,10 @@ function M.Run()
     if not record then
         key = Rustcore.GetCharacterKey()
         if not key then return end
+        -- GetCharacterKey falls back to name-realm when the GUID has not
+        -- arrived yet, which is exactly the key a same-named predecessor's
+        -- record would be sitting under.
+        DisplaceForeignRecord(V.GetStore(), key)
         CreateRecord(key)
         return
     end
@@ -296,6 +337,7 @@ function M.Run()
     end
 
     M.RepairSealVersionFalsePositive(record)
+    M.ReleaseLegacyGapVerdict(record)
     M.MaybeGrandfatherExisting(record)
     M.RepairUnexplainedSelfFound(record)
 end
@@ -352,7 +394,9 @@ function M.RepairSealVersionFalsePositive(record)
                 wasCertified = track.claimed and not track.claimLapsed
             end
 
-            track.status = wasCertified and V.STATUS.VERIFIED or V.STATUS.UNCERTAIN
+            track.evidenceStatus = wasCertified and V.STATUS.VERIFIED or V.STATUS.UNCERTAIN
+            track.evidenceReason = nil
+            track.status = track.evidenceStatus
             track.statusReason = nil
             track.statusAt = nil
             restored = true
@@ -370,6 +414,92 @@ function M.RepairSealVersionFalsePositive(record)
             .. "earlier Rustcore version has been corrected.")
     end
     return restored
+end
+
+-- Hand tracking-gap verdicts written by older builds back to the component that
+-- now owns them.
+--
+-- Until this build a gap past tolerance wrote its verdict straight into
+-- track.status, and V.SetStatus only ever moves downward -- so the verdict
+-- outlived the gap that caused it. Records are on disk carrying UNVERIFIED and
+-- SUSPENDED statuses whose entire cause was a stretch of unwatched play, on
+-- characters that have since played hundreds of watched hours and would sit
+-- comfortably inside tolerance if anything ever asked the question again.
+--
+-- Nothing here decides those runs are fine. It stops the *record* answering for
+-- them: the verdict goes back to T.ComponentStatus, which re-derives it from the
+-- sealed missing seconds against the current level's allowance and is perfectly
+-- free to arrive at UNVERIFIED all over again. What changes is that it can now
+-- also arrive somewhere better, which is the whole point of deriving it.
+--
+-- Guarded hard, because this raises a status. Only a track whose stored reason
+-- names the gap; only where nothing else was ever recorded against that track;
+-- never one that had already been through the split (evidenceStatus present
+-- means the record has been read under the new rules and this has had its turn);
+-- and never a FAILED one, because a failure is evidence and is not the gap's to
+-- give back.
+--
+-- What the track is restored *to* follows the evidence still on the record,
+-- exactly as the false-seal repair above does it: a difficulty track with a tier
+-- had been certified, one without had not yet earned it, and handing everything
+-- back as VERIFIED would certify characters that were only part-way through
+-- qualifying.
+function M.ReleaseLegacyGapVerdict(record)
+    if not record then return false end
+
+    local GAP_REASON = "playtime not observed: "
+    local released = false
+
+    for _, trackName in ipairs({ "difficulty", "selfFound" }) do
+        local track = record[trackName]
+        if type(track) == "table" then
+            -- Notes the gap left on the way past. The gap talking about itself
+            -- is not evidence against the gap, and these counts outlast the
+            -- verdict they accompanied -- they block qualification and
+            -- grandfathering long after the missing time stops mattering.
+            if type(track.warnings) == "table" and track.warnings.untrackedPlay then
+                track.warnings.untrackedPlay = nil
+            end
+
+            local reason = track.statusReason
+            if track.evidenceStatus == nil
+                and (track.status == V.STATUS.UNVERIFIED
+                     or track.status == V.STATUS.SUSPENDED)
+                and type(reason) == "string"
+                and reason:sub(1, #GAP_REASON) == GAP_REASON
+                and (not V.Time or not V.Time.NothingElseRecorded
+                     or V.Time.NothingElseRecorded(record, trackName)) then
+
+                local wasCertified
+                if trackName == "difficulty" then
+                    wasCertified = (tonumber(track.highestVerifiedTier) or 0) >= 1
+                else
+                    wasCertified = track.claimed and not track.claimLapsed
+                end
+
+                track.evidenceStatus = wasCertified and V.STATUS.VERIFIED
+                    or V.STATUS.UNCERTAIN
+                track.evidenceReason = nil
+                released = true
+
+                if V.Integrity and V.Integrity.Append then
+                    V.Integrity.Append("GAP_RELEASE", {
+                        track = trackName,
+                        from = track.status,
+                        to = track.evidenceStatus,
+                    })
+                end
+            end
+        end
+    end
+
+    if not released then return false end
+
+    -- Re-derived immediately, so the status the player sees this session is the
+    -- one the current rules produce and not the one that was just released.
+    if V.ComposeAll then V.ComposeAll() end
+    if V.Integrity and V.Integrity.Seal then V.Integrity.Seal(record) end
+    return true
 end
 
 -- Undo a Self-Found certification that was ended for no reason Rustcore can
@@ -408,13 +538,19 @@ function M.RepairUnexplainedSelfFound(record)
 
     -- Anything Rustcore genuinely detected would have marked these.
     if record.tamperReason then return false end
-    local timeState = record.time or {}
-    if timeState.gapBand and timeState.gapBand ~= "OK" then return false end
+    -- Asked of Time.lua rather than read off the record, so a character whose
+    -- missing time has since been covered by watched play is not held back by
+    -- the state a long-closed gap left behind.
+    if V.Time and V.Time.ComponentStatus then
+        local timeStatus = V.Time.ComponentStatus()
+        if timeStatus and not V.IsCertified(timeStatus) then return false end
+    end
 
     -- The difficulty track is the honest summary of whether this character has
     -- ever looked wrong. If that is still certified, nothing was found.
     if not V.IsCertified(difficulty.status) then return false end
 
+    selfFound.evidenceStatus = V.STATUS.SUSPENDED
     selfFound.status = V.STATUS.SUSPENDED
     selfFound.suspended = true
     selfFound.restoreAtTracked = nil
@@ -448,6 +584,17 @@ end
 -- touched, so this cannot launder a failure.
 function M.MaybeGrandfatherExisting(record)
     if not record or record.origin ~= "NEW_CHARACTER" then return false end
+
+    -- Rustcore was watching from level 1, so by definition there is no earlier
+    -- history to make allowances for. Without this the level gate in
+    -- IsLegacyCharacter would only postpone the problem: the record is created
+    -- at level 1 as NEW_CHARACTER, and the moment the character dinged 2 this
+    -- would find the previous character's leftovers and grandfather it after
+    -- the fact.
+    local startedAt = record.difficulty
+        and tonumber(record.difficulty.startedAtLevel)
+    if startedAt and startedAt <= 1 then return false end
+
     if not IsLegacyCharacter() then return false end
 
     local difficulty = record.difficulty or {}
@@ -470,13 +617,17 @@ function M.MaybeGrandfatherExisting(record)
 
     -- A tracking gap is evidence about this record's own history, not about
     -- whether the character predates verification, and section 18 already
-    -- decided what it costs. Leave that verdict alone.
-    local timeState = record.time or {}
-    if timeState.gapBand and timeState.gapBand ~= "OK" then return false end
+    -- decided what it costs. Leave that verdict alone -- it is derived now, so
+    -- it will also lift on its own if watched play covers the missing time.
+    if V.Time and V.Time.ComponentStatus then
+        local timeStatus = V.Time.ComponentStatus()
+        if timeStatus and not V.IsCertified(timeStatus) then return false end
+    end
 
     record.origin = "LEGACY_MIGRATION"
     record.regrandfatheredAt = time and time() or 0
 
+    difficulty.evidenceStatus = V.STATUS.VERIFIED
     difficulty.status = V.STATUS.VERIFIED
     difficulty.highestVerifiedTier = V.GetCurrentTier()
     record.difficulty = difficulty
@@ -484,10 +635,12 @@ function M.MaybeGrandfatherExisting(record)
     -- Self-Found is only granted where the old data shows it was actually being
     -- played; a claim is never invented for a character that never made one.
     if selfFound.claimed then
+        selfFound.evidenceStatus = V.STATUS.VERIFIED
         selfFound.status = V.STATUS.VERIFIED
         record.selfFound = selfFound
     end
 
+    if V.ComposeAll then V.ComposeAll() end
     if V.Integrity and V.Integrity.Append then
         V.Integrity.Append("REGRANDFATHER", {
             tier = difficulty.highestVerifiedTier or 0,

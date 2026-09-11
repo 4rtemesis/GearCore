@@ -295,7 +295,7 @@ local function BuildRustedFrame()
     bgShade:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
     bgShade:SetVertexColor(0, 0, 0, 0.62)
 
-    local title = f:CreateFontString(nil, "OVERLAY")
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -26)
     title:SetFont(TITLE_FONT_PATH, 30, "")
     title:SetTextColor(unpack(TITLE_COLOR))

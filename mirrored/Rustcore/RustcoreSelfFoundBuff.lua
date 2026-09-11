@@ -393,6 +393,32 @@ local function EnsureTargetIcon()
     return targetIcon
 end
 
+-- Blizzard's own debuff-border colours. These used to be read straight off the
+-- global DebuffTypeColor, which is where the ring on a native target frame gets
+-- its colour from -- but the Anniversary client stopped defining that global, so
+-- the lookup came back nil and every debuff fell through to the undispellable
+-- red. A poison read as red, a curse read as red, and the ring stopped saying
+-- anything at all. The numbers below are the ones Blizzard shipped, so a client
+-- that still exposes the table is preferred over them and the two agree anyway.
+local DEBUFF_TYPE_COLOR = {
+    Magic   = { r = 0.20, g = 0.60, b = 1.00 },
+    Curse   = { r = 0.60, g = 0.00, b = 1.00 },
+    Disease = { r = 0.60, g = 0.40, b = 0.00 },
+    Poison  = { r = 0.00, g = 0.60, b = 0.00 },
+    none    = { r = 0.80, g = 0.00, b = 0.00 },
+}
+
+-- UnitAura reports "no dispel type" as nil on some clients and as an empty
+-- string on others, and neither is a key in either table.
+local function DebuffColor(debuffType)
+    local key = debuffType
+    if key == nil or key == "" then key = "none" end
+
+    local palette = _G.DebuffTypeColor
+    local color = palette and (palette[key] or palette["none"])
+    return color or DEBUFF_TYPE_COLOR[key] or DEBUFF_TYPE_COLOR.none
+end
+
 local function CreateTargetAuraButton()
     local b = CreateFrame("Button", nil, UIParent)
     b:SetSize(TARGET_BUTTON_SIZE, TARGET_BUTTON_SIZE)
@@ -405,8 +431,8 @@ local function CreateTargetAuraButton()
     -- Debuffs wear the coloured ring real ones do. Blizzard's own asset and
     -- texcoords, taken from the TargetDebuffButton template, so it lines up with
     -- the native frames rather than approximating them. The ring art is white;
-    -- the colour comes from DebuffTypeColor, which is what tells Magic from
-    -- Curse from Poison at a glance -- and plain red for anything undispellable.
+    -- the colour comes from DebuffColor, which is what tells Magic from Curse
+    -- from Poison at a glance -- and plain red for anything undispellable.
     b.debuffBorder = b:CreateTexture(nil, "OVERLAY")
     b.debuffBorder:SetTexture("Interface\\Buttons\\UI-Debuff-Overlays")
     b.debuffBorder:SetTexCoord(0.296875, 0.5703125, 0, 0.515625)
@@ -557,15 +583,8 @@ function RefreshTargetIcon()
             end
 
             if filter == "HARMFUL" then
-                local palette = _G.DebuffTypeColor
-                local color = palette and (palette[debuffType or "none"] or palette["none"])
-                -- Plain red is the right fallback: it is what Blizzard uses for
-                -- a debuff with no dispel type, and the only case this reaches
-                -- is a client that does not expose the table at all.
-                b.debuffBorder:SetVertexColor(
-                    color and color.r or 0.8,
-                    color and color.g or 0,
-                    color and color.b or 0)
+                local color = DebuffColor(debuffType)
+                b.debuffBorder:SetVertexColor(color.r, color.g, color.b)
                 b.debuffBorder:Show()
             else
                 b.debuffBorder:Hide()

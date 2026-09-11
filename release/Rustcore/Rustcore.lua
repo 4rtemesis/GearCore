@@ -91,6 +91,11 @@ local defaults = {
     showAllDurability = false,   -- show all equipped slots regardless of durability level
     durHUDGrowUpward = false,    -- stack durability HUD rows upward instead of downward
     durHUDReverseOrder = false,  -- reverse stack sort so most-damaged item sits at the bottom
+    durHUDHorizontal = false,    -- lay the durability counters out in a row instead of a column
+    durHUDBackground = false,   -- draw the rivet panel behind the durability counters
+    durHUDBackgroundOpacity = 0.78, -- opacity of the durability HUD background art
+    durHUDBackgroundShadow = 0.78,  -- opacity of the solid black plane behind that art
+    statsBackground = true,        -- draw the rivet panel behind the stats window
     statsBackgroundOpacity = 0.78, -- opacity of the stats window background art
     statsBackgroundShadow = 0.78, -- opacity of the solid black plane behind the background art
     statsHorizontalLayout = false, -- arrange all stats window elements on a single row
@@ -110,6 +115,7 @@ local defaults = {
     showDeathlogItem = true,    -- show an icon for the most valuable item lost
     showDeathlogSource = true,  -- show what killed the player
     deathlogMinLevel = 0,       -- hide deathlog entries below this level (0 = show all)
+    deathlogMinQuality = 0,     -- hide deaths that lost nothing this rare (0 = show all)
     deathlogBackgroundOpacity = 0.78, -- deathlog background art opacity
     deathlogBackgroundShadow = 0.78, -- deathlog dark overlay opacity
     deathlogFontSize = 11,      -- deathlog row text size
@@ -413,6 +419,12 @@ function Rustcore.SetSetting(key, value)
             if RustcoreDragon.RefreshPlayerFrame then RustcoreDragon.RefreshPlayerFrame() end
             if RustcoreDragon.RefreshTargetFrame then RustcoreDragon.RefreshTargetFrame() end
         end
+    elseif key == "statsBackground" and RustcoreStats then
+        if RustcoreStats.HandleBackgroundChanged then
+            RustcoreStats.HandleBackgroundChanged()
+        elseif RustcoreStats.RefreshLayout then
+            RustcoreStats.RefreshLayout()
+        end
     elseif key == "statsBackgroundOpacity" and RustcoreStats and RustcoreStats.RefreshBackgroundOpacity then
         RustcoreStats.RefreshBackgroundOpacity()
     elseif key == "statsBackgroundShadow" and RustcoreStats and RustcoreStats.RefreshBackgroundShadow then
@@ -451,12 +463,108 @@ function Rustcore.SetSetting(key, value)
         RustcoreDurability.Refresh()
     elseif key == "durHUDReverseOrder" and RustcoreDurability and RustcoreDurability.HandleReverseOrderChanged then
         RustcoreDurability.HandleReverseOrderChanged()
+    elseif key == "durHUDHorizontal" and RustcoreDurability then
+        if RustcoreDurability.HandleHorizontalChanged then
+            RustcoreDurability.HandleHorizontalChanged()
+        elseif RustcoreDurability.RefreshPosition then
+            RustcoreDurability.RefreshPosition()
+        end
+    elseif key == "durHUDBackground" and RustcoreDurability then
+        if RustcoreDurability.HandleBackgroundChanged then
+            RustcoreDurability.HandleBackgroundChanged()
+        elseif RustcoreDurability.RefreshPosition then
+            RustcoreDurability.RefreshPosition()
+        end
+    elseif key == "durHUDBackgroundOpacity" and RustcoreDurability and RustcoreDurability.RefreshBackgroundOpacity then
+        RustcoreDurability.RefreshBackgroundOpacity()
+    elseif key == "durHUDBackgroundShadow" and RustcoreDurability and RustcoreDurability.RefreshBackgroundShadow then
+        RustcoreDurability.RefreshBackgroundShadow()
     elseif key == "showDeathlogWindow" and RustcoreDeathlog then
         RustcoreDeathlog.ApplyVisibility()
-    elseif (key == "showDeathlogLevel" or key == "showDeathlogCount" or key == "showDeathlogItem" or key == "showDeathlogSource" or key == "deathlogMinLevel") and RustcoreDeathlog then
+    elseif (key == "showDeathlogLevel" or key == "showDeathlogCount" or key == "showDeathlogItem" or key == "showDeathlogSource" or key == "deathlogMinLevel" or key == "deathlogMinQuality") and RustcoreDeathlog then
         RustcoreDeathlog.RefreshRows()
     end
     return true
+end
+
+-- Death rarity filter ---------------------------------------------------------
+--
+-- One rule with three consumers -- the chat line, the centre-screen warning and
+-- the death log -- so it is answered once here instead of three times in three
+-- modules that would drift apart.
+--
+-- The slider is a floor, not a band: at Green, a death that lost a blue is
+-- still worth hearing about. Position 0 is off and lets everything through,
+-- including a death that lost nothing at all; every position above it implies
+-- at least one item was lost, because that is what a rarity is a statement
+-- about.
+local QUALITY_FILTER_NAMES = {
+    [0] = "Off",
+    [1] = "Grey",
+    [2] = "White",
+    [3] = "Green",
+    [4] = "Blue",
+    [5] = "Epic",
+}
+
+function Rustcore.GetDeathQualityFilterName(value)
+    return QUALITY_FILTER_NAMES[tonumber(value) or -1] or tostring(value)
+end
+
+-- Reverse of ITEM_QUALITY_COLORS, built on first use rather than at load: this
+-- file runs before the client has necessarily finished setting that global up.
+local qualityByHex
+
+-- GetItemInfo is the better answer whenever it has one, but it returns nil for
+-- an item this client has never seen -- which is the ordinary case for a
+-- stranger's death arriving over the realm channel. The quality colour is baked
+-- into the link itself and is always present, so it is the fallback rather than
+-- the other way round.
+function Rustcore.GetDeathItemQuality(link)
+    if type(link) ~= "string" or link == "" then return nil end
+
+    if GetItemInfo then
+        local quality = select(3, GetItemInfo(link))
+        if quality then return quality end
+    end
+
+    if not qualityByHex then
+        qualityByHex = {}
+        if ITEM_QUALITY_COLORS then
+            for quality, color in pairs(ITEM_QUALITY_COLORS) do
+                if type(quality) == "number" and type(color) == "table" and color.hex then
+                    qualityByHex[color.hex:lower()] = quality
+                end
+            end
+        end
+    end
+
+    local hex = link:match("^|c(%x%x%x%x%x%x%x%x)")
+    if not hex then return nil end
+    return qualityByHex["|c" .. hex:lower()]
+end
+
+-- True when a death is worth showing. `d` is the wire payload: `count` is how
+-- many items the death took, and `link` is the single representative item that
+-- travelled with it, so this is only ever as good as that one link.
+function Rustcore.DeathPassesQualityFilter(d)
+    local value = tonumber(Rustcore.GetSetting("deathlogMinQuality")) or 0
+    if value <= 0 then return true end
+    if not d then return false end
+
+    -- Every position above Off is a statement about an item that was lost, so a
+    -- death that took nothing is out before rarity is even considered.
+    if (tonumber(d.count) or 0) <= 0 then return false end
+
+    -- Grey is the lowest rarity there is, so "grey or better" is satisfied by
+    -- any loss at all and never needs the link resolved. That matters: it keeps
+    -- the first position working even for an item this client cannot identify.
+    local minQuality = value - 1
+    if minQuality <= 0 then return true end
+
+    local quality = Rustcore.GetDeathItemQuality(d.link)
+    if not quality then return false end
+    return quality >= minQuality
 end
 
 -- Pre-profiles layout keys that used to live flat on RustcoreDB.
@@ -728,6 +836,14 @@ local function OnPlayerDead()
                 RustcoreDB.pendingDeletion[#RustcoreDB.pendingDeletion+1] = {
                     slot = item.slot, link = item.link, name = item.name, tex = item.tex, ilvl = item.ilvl,
                 }
+                -- Verification is told here rather than by the deletion frame,
+                -- because the frame is the thing a player can close. What the
+                -- death took is settled at this point whether or not anybody
+                -- ever looks at the window.
+                if RustcoreVerification and RustcoreVerification.DeathLoss
+                    and RustcoreVerification.DeathLoss.Note then
+                    pcall(RustcoreVerification.DeathLoss.Note, item.link, item.slot)
+                end
             end
             for _, item in ipairs(source) do
                 RustcoreDB.pendingDeletionSnapshot[#RustcoreDB.pendingDeletionSnapshot+1] = {

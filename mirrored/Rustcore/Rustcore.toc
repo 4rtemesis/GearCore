@@ -2,7 +2,7 @@
 ## Title: Rustcore
 ## Notes: Disabled repair and deletes items on death.
 ## Author: Rustcore
-## Version: 1.2
+## Version: 1.3.1
 ## IconTexture: Interface\AddOns\Rustcore\RCicon.png
 ## SavedVariables: RustcoreDB
 
@@ -22,6 +22,7 @@ Verification\Economy.lua
 Verification\Money.lua
 Verification\Inventory.lua
 Verification\Durability.lua
+Verification\DeathLoss.lua
 Verification\Transfer.lua
 Verification\UI.lua
 RustcoreBroadcast.lua

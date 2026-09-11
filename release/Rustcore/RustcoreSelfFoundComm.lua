@@ -59,6 +59,25 @@ local function GetUnitFullName(unit)
     return name
 end
 
+-- Whom the server will actually carry an addon whisper to.
+--
+-- A whisper across the faction line is refused, and refused loudly: the client
+-- prints "No player named X is currently playing" into the chat frame. Simply
+-- targeting an enemy player was enough to produce it, which made Rustcore look
+-- broken over a query that could never have been answered anyway -- an addon
+-- whisper does not cross factions, so there was no reply coming either way.
+--
+-- An unreadable faction on either side falls through as queryable. The cost of
+-- guessing wrong there is the message this exists to prevent, once; the cost of
+-- guessing the other way is silently never asking about a legitimate player.
+local function IsQueryable(unit)
+    if not UnitExists(unit) or not UnitIsPlayer(unit) then return false end
+    if not UnitFactionGroup then return true end
+    local theirs, mine = UnitFactionGroup(unit), UnitFactionGroup("player")
+    if not theirs or not mine then return true end
+    return theirs == mine
+end
+
 local function SendMessage(msg, whisperTarget)
     if not prefixRegistered then return false end
     if whisperTarget and whisperTarget ~= "" then
@@ -223,7 +242,7 @@ function RustcoreSelfFoundComm.RefreshOverlays()
 end
 
 local function OnUnitChanged(unit)
-    if UnitExists(unit) and UnitIsPlayer(unit) then
+    if IsQueryable(unit) then
         RequestStatus(GetUnitFullName(unit))
     end
     RustcoreSelfFoundComm.RefreshOverlays()
@@ -243,7 +262,7 @@ end
 -- the cursor across a crowded bank sends one whisper per player per 15 seconds
 -- rather than one per frame.
 local function OnMouseoverChanged()
-    if UnitExists("mouseover") and UnitIsPlayer("mouseover") then
+    if IsQueryable("mouseover") then
         -- Not filtered for the player themselves here; RequestStatus already
         -- refuses to query itself, and one owner for that rule is enough.
         RequestStatus(GetUnitFullName("mouseover"))
@@ -252,7 +271,7 @@ end
 
 local function RefreshWatchedUnits()
     for _, entry in ipairs(WATCHED_FRAMES) do
-        if UnitExists(entry.unit) and UnitIsPlayer(entry.unit) and not UnitIsUnit(entry.unit, "player") then
+        if IsQueryable(entry.unit) and not UnitIsUnit(entry.unit, "player") then
             RequestStatus(GetUnitFullName(entry.unit))
         end
     end

@@ -127,6 +127,7 @@ local WARN_TO_CODE = {
     goldDiscrepancy   = 3,
     itemDiscrepancy   = 4,
     mailAcquisition   = 5,
+    deathLossItem     = 6,
 }
 local CODE_TO_WARN = {}
 for name, code in pairs(WARN_TO_CODE) do CODE_TO_WARN[code] = name end
@@ -407,7 +408,13 @@ function X.BuildString(freshPlayed)
         ToB36(freshPlayed or timeState.lastServerPlayed or 0),       -- 24
         ToB36(timeState.trackedSinceAnchor or 0),                    -- 25
         ToB36(timeState.untrackedSeconds or 0),                      -- 26
-        tostring(BAND_TO_CODE[timeState.gapBand or "OK"] or 1),      -- 27
+        -- Field kept so the wire format keeps its shape, but the band it used
+        -- to carry no longer exists: the receiving side derives the tracking
+        -- verdict from fields 23-26, which are the evidence the band was only
+        -- ever a conclusion about. Carrying the conclusion as well meant an
+        -- import could import a verdict that the numbers beside it disagreed
+        -- with, and that could never recover.
+        "1",                                                         -- 27
 
         opt(money.last),                                             -- 28
         opt(money.lastPlayed),                                       -- 29
@@ -497,6 +504,17 @@ function X.Parse(text)
         if n == 0 then return nil end
         return n
     end
+    -- Character levels, not tiers. They travel in the same plain-decimal shape
+    -- as a tier does, which is why they were read back through tierOpt at first,
+    -- but a level is bounded by the game's level cap rather than by MAX_TIER --
+    -- so every character past level 5 failed the range check and its transfer
+    -- was rejected as malformed. The bound here only exists to reject garbage;
+    -- the level cap itself is not Transfer's business to enforce.
+    local function levelOpt(index)
+        local n = int(index, 0, 255)
+        if n == 0 then return nil end
+        return n
+    end
 
     local schema = int(1, X.SCHEMA, X.SCHEMA)
     if bad or schema ~= X.SCHEMA then
@@ -531,15 +549,15 @@ function X.Parse(text)
         dCap        = tierOpt(7),
         dPending    = tierOpt(8),
         dFloor      = tierOpt(9),
-        dLevel      = tierOpt(10),
+        dLevel      = levelOpt(10),
         dDeaths     = b36(11),
         dRepairs    = b36(12),
         dWarnings   = dWarn,
 
         sStatus     = CODE_TO_STATUS[int(14, 0, 6) or 0],
-        sLevel      = tierOpt(15),
-        sQualify    = tierOpt(16),
-        sClaimLevel = tierOpt(17),
+        sLevel      = levelOpt(15),
+        sQualify    = levelOpt(16),
+        sClaimLevel = levelOpt(17),
         sFlags      = int(18, 0, 7),
         sRestoreAt  = b36opt(19),
         sViolations = b36(20),
@@ -618,8 +636,9 @@ function X.Reconcile(decoded, serverPlayed)
     local unaccounted = difference - sessionTracked
     if unaccounted > X.UNACCOUNTED_ALLOWANCE then
         return false, string.format(
-            "%d minutes of play since this was exported cannot be accounted for; "
-            .. "export again from the computer you were playing on",
+            "%d minutes of play since the export were not watched by Rustcore "
+            .. "on this PC; export again there and log out within a minute of "
+            .. "pressing Export",
             floor(unaccounted / 60) + 1)
     end
 
@@ -650,12 +669,9 @@ local function HigherCount(a, b)
     return math.max(tonumber(a) or 0, tonumber(b) or 0)
 end
 
-local GAP_RANK = { OK = 1, WARNING = 2, SEVERE = 3 }
-
-local function WorseGapBand(a, b)
-    local ra, rb = GAP_RANK[a or "OK"] or 1, GAP_RANK[b or "OK"] or 1
-    return (ra >= rb) and (a or "OK") or (b or "OK")
-end
+-- The gap band and its comparator used to live here. Both are gone: the
+-- tracking verdict is derived from the untracked seconds now, so there is no
+-- band on either side of an import to compare.
 
 local function MergeWarnings(target, localWarnings)
     if type(localWarnings) ~= "table" then return end
@@ -671,16 +687,22 @@ local function PessimiseAgainstLocal(record, previous)
     local pd, pf = previous.difficulty or {}, previous.selfFound or {}
     local rd, rf = record.difficulty, record.selfFound
 
+    -- Both sides read as evidence, never as the composed status. The composed
+    -- value includes derived components, and a local record whose tracking gap
+    -- happened to be open at import time would otherwise have that moment
+    -- frozen into the imported record as though Rustcore had caught something.
     local function noteStatus(track, localStatus)
-        local worse = WorseStatus(track.status, localStatus)
-        if worse ~= track.status then
+        local mine = track.evidenceStatus or track.status
+        local worse = WorseStatus(mine, localStatus)
+        if worse ~= mine then
+            track.evidenceStatus = worse
             track.status = worse
             changed = true
         end
     end
 
-    noteStatus(rd, pd.status)
-    noteStatus(rf, pf.status)
+    noteStatus(rd, pd.evidenceStatus or pd.status)
+    noteStatus(rf, pf.evidenceStatus or pf.status)
 
     rd.highestVerifiedTier = LowerTier(rd.highestVerifiedTier, pd.highestVerifiedTier)
     rd.permanentCapTier    = LowerTier(rd.permanentCapTier, pd.permanentCapTier)
@@ -704,9 +726,12 @@ local function PessimiseAgainstLocal(record, previous)
         rf.restoreAtTracked = math.max(tonumber(rf.restoreAtTracked) or 0, pf.restoreAtTracked)
     end
 
+    -- The measurement, and only the measurement. The verdict the two sides
+    -- reached about it is not merged, because it is not stored on either side
+    -- any more -- keeping the worse of two stale conclusions was exactly the
+    -- latch that made a closed gap impossible to recover from.
     local pt = previous.time or {}
     record.time.untrackedSeconds = HigherCount(record.time.untrackedSeconds, pt.untrackedSeconds)
-    record.time.gapBand = WorseGapBand(record.time.gapBand, pt.gapBand)
 
     local pe = previous.economy or {}
     local pem, pei = pe.money or {}, pe.items or {}
@@ -791,7 +816,6 @@ local function ApplyFields(decoded, serverPlayed, creditSeconds)
         lastServerPlayed   = serverPlayed,
         trackedSinceAnchor = (decoded.tracked or 0) + (creditSeconds or 0),
         untrackedSeconds   = decoded.untracked or 0,
-        gapBand            = decoded.band or "OK",
         lastPlayedCheck    = time and time() or nil,
     }
 

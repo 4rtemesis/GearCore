@@ -158,10 +158,12 @@ end
 local function GetVisibleEntries()
     local entries = EnsureDB()
     local minLevel = tonumber(Rustcore.GetSetting("deathlogMinLevel")) or 0
-    if minLevel <= 0 then return entries end
+    local minQuality = tonumber(Rustcore.GetSetting("deathlogMinQuality")) or 0
+    if minLevel <= 0 and minQuality <= 0 then return entries end
     local filtered = {}
     for _, entry in ipairs(entries) do
-        if (entry.level or 0) >= minLevel then
+        if (entry.level or 0) >= minLevel
+            and Rustcore.DeathPassesQualityFilter(entry) then
             table.insert(filtered, entry)
         end
     end

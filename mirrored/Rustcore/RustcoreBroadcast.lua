@@ -401,15 +401,22 @@ local function Display(d)
 
     local minLevel = tonumber(Rustcore.GetSetting("deathlogMinLevel")) or 0
     local meetsMinLevel = not d.level or d.level >= minLevel
+    -- The same predicate the death log filters its rows with, so all three
+    -- surfaces agree about which deaths are worth a player's attention rather
+    -- than each holding its own opinion.
+    local meetsRarity = Rustcore.DeathPassesQualityFilter(d)
 
-    if Rustcore.GetSetting("showDeathPopup") and meetsMinLevel then
+    if Rustcore.GetSetting("showDeathPopup") and meetsMinLevel and meetsRarity then
         print(line)
     end
 
-    if Rustcore.GetSetting("showDeathWarning") and meetsMinLevel and RustcoreDeathNotification and RustcoreDeathNotification.Show then
+    if Rustcore.GetSetting("showDeathWarning") and meetsMinLevel and meetsRarity and RustcoreDeathNotification and RustcoreDeathNotification.Show then
         RustcoreDeathNotification.Show(d)
     end
 
+    -- Stored unfiltered on purpose. The log applies both filters when it draws
+    -- (GetVisibleEntries), so moving a slider re-reveals deaths already
+    -- collected instead of only affecting ones that happen from now on.
     if RustcoreDeathlog and RustcoreDeathlog.AddEntry then RustcoreDeathlog.AddEntry(d) end
 end
 

@@ -195,11 +195,65 @@ function V.CandidateKeys()
     return keys
 end
 
+-- True unless this record can be *proved* to belong to a different character.
+--
+-- Proof, never suspicion. The whole point of V.CandidateKeys is that a record
+-- legitimately moves between keys, so anything short of a contradiction has to
+-- read as "this is us" -- otherwise the fallback keys stop working and every
+-- character whose GUID arrived late loses its history. So this only answers
+-- false on a fact that cannot be true of a single character:
+--
+--   guid   the only real identity there is, once the client has handed it over
+--   class  no class change exists in Classic
+--   level  levels do not go down
+--
+-- The bug this closes: delete a character, make a new one with the same name,
+-- and name-realm matched the old character's record. The new character
+-- inherited the whole thing -- deaths, tier caps, certification -- because
+-- nothing downstream ever asked whether the record it found was actually this
+-- character's.
+function V.RecordBelongsToPlayer(record)
+    if type(record) ~= "table" then return false end
+
+    local identity = record.identity
+    if type(identity) == "table" then
+        -- Both sides know the GUID, so there is nothing left to weigh.
+        local guid = UnitGUID and UnitGUID("player")
+        if identity.guid and guid and guid ~= "" then
+            return identity.guid == guid
+        end
+
+        local _, class = UnitClass("player")
+        if identity.class and class and identity.class ~= class then
+            return false
+        end
+    end
+
+    -- A record that remembers a higher level than the character standing here
+    -- cannot be that character's. Both figures are lower bounds on the level
+    -- the record's owner reached, which is all this needs them to be.
+    local level = UnitLevel and UnitLevel("player")
+    if level and level > 0 then
+        local recorded = record.baseline and tonumber(record.baseline.level)
+        local started = record.difficulty
+            and tonumber(record.difficulty.startedAtLevel)
+        if started and (not recorded or started > recorded) then
+            recorded = started
+        end
+        if recorded and recorded > level then return false end
+    end
+
+    return true
+end
+
 -- The key this character's record is actually stored under, plus the record.
 function V.FindRecordKey()
     local store = V.GetStore()
     for _, key in ipairs(V.CandidateKeys()) do
-        if store[key] then return key, store[key] end
+        local record = store[key]
+        if record and V.RecordBelongsToPlayer(record) then
+            return key, record
+        end
     end
     return nil, nil
 end
@@ -221,6 +275,9 @@ end
 function V.NewTrack(status)
     return {
         status = status,
+        -- The half that sticks. Seeded equal to the composed status, which for
+        -- a brand new track is the whole truth about it.
+        evidenceStatus = status,
         warnings = {},
         startedAtLevel = nil,
         verificationStartPlayed = nil,
@@ -253,6 +310,133 @@ function V.IsCertified(status)
     return status == V.STATUS.VERIFIED or status == V.STATUS.WARNING
 end
 
+-- ── Composed status ──────────────────────────────────────────────────────────
+--
+-- A track's status is two different kinds of thing wearing one name.
+--
+-- Some of it is evidence: a repair under a difficulty that forbids one, a trade
+-- that ends a Self-Found claim, a record whose seal no longer matches its own
+-- contents. Those are things Rustcore saw happen, they do not stop having
+-- happened, and the status they cost is meant to be permanent.
+--
+-- The rest is not evidence at all but the absence of it -- chiefly how much of
+-- this character's life Rustcore was actually running for. That is a
+-- measurement, it is taken fresh every time /played arrives, and it moves in
+-- both directions: play on with Rustcore watching and the unobserved share of
+-- the run falls. Storing its verdict the way an observed violation is stored
+-- made recovery impossible, because a stored verdict is precisely the kind of
+-- thing that cannot improve.
+--
+-- So the two are kept apart. `track.evidenceStatus` is the sticky half, and the
+-- only half anything writes to. Components registered here are the derived
+-- half: each is asked for its own verdict on demand and none of them is written
+-- down. `track.status` is the answer to "how is this run doing" -- the worst of
+-- the two -- and it is a cache. Nothing consults it to decide anything, and
+-- losing it costs nothing, because the next Compose rebuilds it from scratch.
+--
+-- Worst-of is what keeps the halves from contaminating each other. A tracking
+-- gap closing again can never lift a violation, because the violation is still
+-- sitting in evidenceStatus being the worse of the two; and equally, a
+-- violation cannot make a closed gap look open.
+local components = {}
+
+-- fn(trackName) -> status, reason. Returning nil means "nothing to say about
+-- this track", which is the normal answer.
+function V.RegisterComponent(name, fn)
+    for i = 1, #components do
+        if components[i].name == name then
+            components[i].fn = fn
+            return
+        end
+    end
+    components[#components + 1] = { name = name, fn = fn }
+end
+
+-- The sticky half, migrating a record written before the split.
+--
+-- The lazy copy is faithful in a way a one-shot migration pass would not be: at
+-- the moment of the split the stored `status` *is* the whole verdict, evidence
+-- and derived together, so moving it across preserves exactly what the record
+-- said. Where that verdict came from a tracking gap and nothing else, Migration
+-- hands it back to the component on purpose -- see M.ReleaseLegacyGapVerdict.
+local function EvidenceStatus(track)
+    if track.evidenceStatus == nil then
+        track.evidenceStatus = track.status or V.STATUS.UNCERTAIN
+        track.evidenceReason = track.statusReason
+    end
+    return track.evidenceStatus
+end
+
+function V.GetEvidenceStatus(trackName)
+    local track = V.GetTrack(trackName)
+    if not track then return nil end
+    return EvidenceStatus(track)
+end
+
+-- Rebuild `track.status` from the evidence and every component. Pure, cheap and
+-- idempotent, so anything that might have moved either half can simply call it.
+--
+-- Components run under pcall because a component is ordinary module code that
+-- runs on every refresh: an error inside one must cost its opinion, not the
+-- whole status of the run.
+function V.Compose(trackName)
+    local track = V.GetTrack(trackName)
+    if not track then return nil end
+
+    local status = EvidenceStatus(track)
+    local reason = track.evidenceReason
+
+    for i = 1, #components do
+        local ok, componentStatus, componentReason = pcall(components[i].fn, trackName)
+        if ok and componentStatus
+            and V.StatusRank(componentStatus) > V.StatusRank(status) then
+            status, reason = componentStatus, componentReason
+        end
+    end
+
+    track.status = status
+    track.statusReason = reason
+    return status
+end
+
+-- The dragon is a statement about the composed verdict, so it has to move when
+-- the verdict does. Done here rather than inside each module on purpose: a
+-- derived component can change the answer without anything being written down
+-- -- a death-marked item destroyed, a tracking gap closed -- and there is no
+-- event called "a computed status stopped being true". Everything that can
+-- change a composed status passes through here, so this is the one place that
+-- can see it happen.
+--
+-- pcall because this is the presentation layer of somebody else's file: a
+-- broken portrait must not take the verdict down with it.
+local function RefreshPortrait()
+    if not RustcoreDragon then return end
+    if RustcoreDragon.RefreshPlayerFrame then
+        pcall(RustcoreDragon.RefreshPlayerFrame)
+    end
+    if RustcoreDragon.RefreshTargetFrame then
+        pcall(RustcoreDragon.RefreshTargetFrame)
+    end
+end
+
+function V.ComposeAll()
+    local difficulty = V.GetTrack("difficulty")
+    local before = difficulty and difficulty.status
+
+    V.Compose("difficulty")
+    V.Compose("selfFound")
+
+    -- Only the difficulty verdict is asked about, because only it decides
+    -- whether there is a dragon and which one. Compared after the fact rather
+    -- than repainting unconditionally: ComposeAll runs on bag updates and
+    -- equipment changes, and a texture swap on every one of those is a cost
+    -- with nothing to show for it the overwhelming majority of the time.
+    difficulty = difficulty or V.GetTrack("difficulty")
+    if difficulty and difficulty.status ~= before then
+        RefreshPortrait()
+    end
+end
+
 local function AppendChain(eventType, payload)
     if V.Integrity and V.Integrity.Append then
         V.Integrity.Append(eventType, payload)
@@ -267,12 +451,16 @@ function V.SetStatus(trackName, newStatus, reason)
     local track = V.GetTrack(trackName)
     if not track then return false end
     if not STATUS_RANK[newStatus] then return false end
-    if V.StatusRank(newStatus) <= V.StatusRank(track.status) then
+    -- Compared against the evidence and not against the composed status. A
+    -- derived component sitting at UNVERIFIED must not swallow a real violation
+    -- just because the two happen to rank the same -- the gap can close, and
+    -- when it does the violation has to still be there underneath it.
+    if V.StatusRank(newStatus) <= V.StatusRank(EvidenceStatus(track)) then
         return false
     end
 
-    local previous = track.status
-    track.status = newStatus
+    local previous = EvidenceStatus(track)
+    track.evidenceStatus = newStatus
 
     -- Kept for every degradation, not only the terminal one. The Verification
     -- tab has to be able to say *why* a run is not certified, and UNVERIFIED is
@@ -284,7 +472,7 @@ function V.SetStatus(trackName, newStatus, reason)
     -- status itself, and this is a label on a decision that is sealed, not a
     -- decision of its own. Editing it in SavedVariables changes the wording of
     -- a loss, never whether it happened.
-    track.statusReason = reason
+    track.evidenceReason = reason
     track.statusAt = Now()
 
     if newStatus == V.STATUS.FAILED then
@@ -298,6 +486,7 @@ function V.SetStatus(trackName, newStatus, reason)
         to = newStatus,
         reason = reason or "",
     })
+    V.Compose(trackName)
     return true
 end
 
@@ -306,14 +495,18 @@ end
 -- other status so it can never launder a failure.
 function V.Promote(trackName, reason)
     local track = V.GetTrack(trackName)
-    if not track or track.status ~= V.STATUS.UNCERTAIN then return false end
+    if not track or EvidenceStatus(track) ~= V.STATUS.UNCERTAIN then return false end
 
-    track.status = V.STATUS.VERIFIED
+    track.evidenceStatus = V.STATUS.VERIFIED
+    track.evidenceReason = nil
     AppendChain("PROMOTE", {
         track = trackName,
         to = V.STATUS.VERIFIED,
         reason = reason or "",
     })
+    -- Promotes the evidence, not necessarily the run: a component still saying
+    -- something worse keeps saying it, and Compose is where that is settled.
+    V.Compose(trackName)
     return true
 end
 
@@ -325,14 +518,16 @@ end
 -- SUSPENDED is the one state it may be done from.
 function V.Restore(trackName, reason)
     local track = V.GetTrack(trackName)
-    if not track or track.status ~= V.STATUS.SUSPENDED then return false end
+    if not track or EvidenceStatus(track) ~= V.STATUS.SUSPENDED then return false end
 
-    track.status = V.STATUS.VERIFIED
+    track.evidenceStatus = V.STATUS.VERIFIED
+    track.evidenceReason = nil
     AppendChain("RESTORE", {
         track = trackName,
         to = V.STATUS.VERIFIED,
         reason = reason or "",
     })
+    V.Compose(trackName)
     return true
 end
 
@@ -350,7 +545,7 @@ end
 function V.EvaluateQualification(trackName)
     local track = V.GetTrack(trackName)
     if not track then return false, "no verification record" end
-    if track.status ~= V.STATUS.UNCERTAIN then return false, "not uncertain" end
+    if EvidenceStatus(track) ~= V.STATUS.UNCERTAIN then return false, "not uncertain" end
 
     local startedAt = track.qualifyFromLevel or track.startedAtLevel
     if type(startedAt) ~= "number" then return false, "start level unknown" end
@@ -378,9 +573,16 @@ function V.EvaluateQualification(trackName)
     local record = V.GetRecord()
     local state = record and record.time
     if not state or not state.anchorPlayed then return false, "no playtime anchor" end
-    -- Time.lua only ever escalates this band, so a gap found during the window
-    -- cannot be waited out.
-    if state.gapBand and state.gapBand ~= "OK" then return false, "tracking gap" end
+    -- Asked of Time.lua fresh rather than read off the record. A gap big enough
+    -- to cost the certification also blocks the promotion out of UNCERTAIN --
+    -- but only for as long as it is still that big. Watched play closes it and
+    -- this stops objecting on its own, which is the whole point of the split.
+    if V.Time and V.Time.ComponentStatus then
+        local timeStatus = V.Time.ComponentStatus()
+        if timeStatus and not V.IsCertified(timeStatus) then
+            return false, "tracking gap"
+        end
+    end
     if (state.trackedSinceAnchor or 0) < V.QUALIFY_MIN_TRACKED then
         return false, "not enough tracked play"
     end
@@ -417,8 +619,8 @@ function V.AddWarning(trackName, warningType, detail)
     track.warnings[warningType] = count
 
     -- A warning never demotes a track that is already worse than WARNING.
-    if track.status == V.STATUS.VERIFIED then
-        track.status = V.STATUS.WARNING
+    if EvidenceStatus(track) == V.STATUS.VERIFIED then
+        track.evidenceStatus = V.STATUS.WARNING
     end
 
     AppendChain("WARN", {
@@ -427,6 +629,7 @@ function V.AddWarning(trackName, warningType, detail)
         count = count,
         detail = detail or "",
     })
+    V.Compose(trackName)
     return count
 end
 
@@ -533,6 +736,12 @@ function V.Init()
     -- through V.Difficulty, so both must already exist.
     if V.Durability and V.Durability.Init then
         V.Durability.Init()
+    end
+    -- After Durability, which is the module that would already have something
+    -- to say about a death-marked item the player repaired instead of
+    -- destroying. Let it be watching before this starts asking.
+    if V.DeathLoss and V.DeathLoss.Init then
+        V.DeathLoss.Init()
     end
     -- Transfer only listens for /played replies; it reads every other module's
     -- state on demand, so it goes up once they all exist.

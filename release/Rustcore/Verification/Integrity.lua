@@ -158,6 +158,33 @@ local function EconomyDigest(record)
         tostring(money.anomalies or 0), tostring(items.anomalies or 0))
 end
 
+-- Death-marked gear that was never destroyed, as one short string.
+--
+-- The list itself is the thing worth protecting. Every other consequence in this
+-- file is a verdict that has already been written down; this one is still a live
+-- question, and the answer is a table of item ids sitting in SavedVariables that
+-- a player could empty in a text editor to make the objection go away. The
+-- tracked timestamp goes in with the id because moving it forward is the quieter
+-- version of the same edit -- it buys back the deadline instead of skipping it.
+local function DeathLossDigest(record)
+    local pending = record and record.deathLoss and record.deathLoss.pending
+    if type(pending) ~= "table" then return "" end
+
+    local parts = {}
+    for itemID, entry in pairs(pending) do
+        if type(entry) == "table" then
+            parts[#parts + 1] = string.format("%s:%s:%s:%s:%s",
+                tostring(itemID),
+                tostring(entry.at or ""),
+                tostring(entry.count or ""),
+                tostring(entry.seen or ""),
+                entry.recorded and "1" or "0")
+        end
+    end
+    table.sort(parts)
+    return table.concat(parts, ",")
+end
+
 -- The authoritative values the seal protects. Anything a tamperer would want to
 -- edit directly -- a status, a tier cap, the playtime counters -- belongs here.
 local function CriticalState(record)
@@ -175,11 +202,17 @@ local function CriticalState(record)
         schema      = record.schemaVersion or "",
         origin      = record.origin or "",
         guid        = record.identity and record.identity.guid or "",
-        dStatus     = difficulty.status or "",
+        -- The sticky half of the status, not the composed one. The composed
+        -- value moves when a derived component changes its mind -- which a
+        -- level-up alone is enough to do -- and sealing that would have the
+        -- record fail its own checksum for the crime of the player dinging.
+        -- What a tamperer would want to edit is the evidence, and that is what
+        -- is covered here.
+        dStatus     = difficulty.evidenceStatus or difficulty.status or "",
         dTier       = difficulty.highestVerifiedTier or "",
         dCap        = difficulty.permanentCapTier or "",
         dLevel      = difficulty.startedAtLevel or "",
-        sStatus     = selfFound.status or "",
+        sStatus     = selfFound.evidenceStatus or selfFound.status or "",
         sLevel      = selfFound.startedAtLevel or "",
         -- Phase 4 fields. The claim level decides whether a late Self-Found
         -- start may ever be promoted, the lapse flag decides whether a claim
@@ -206,6 +239,7 @@ local function CriticalState(record)
         untracked   = timeState.untrackedSeconds or "",
         sequence    = chain.sequence or "",
         durability  = DurabilityDigest(record),
+        deathLoss   = DeathLossDigest(record),
     }
 end
 

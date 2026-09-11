@@ -29,19 +29,68 @@ T.POLL_INTERVAL = 300
 T.ACCRUE_INTERVAL = 10
 -- How much of a character's life Rustcore is allowed to have missed, as a share
 -- of total /played. Proportional on purpose and with no absolute ceiling: an
--- hour unwatched means something very different on a 20-hour character than on a
--- 400-hour one, and a fixed cap would punish exactly the long-lived characters
--- who have the most history to show for themselves.
+-- hour unwatched means something very different on a 20-hour character than on
+-- a 400-hour one, and a fixed cap would punish exactly the long-lived
+-- characters who have the most history to show for themselves.
 --
---   up to GAP_RATIO         normal. Nothing is recorded.
---   GAP_RATIO..GAP_SEVERE   flagged, still certified.
---   above GAP_SEVERE_RATIO  UNVERIFIED -- too much went unseen to vouch for.
+-- The share tightens with level, because both of the things that make a gap
+-- forgivable fade as a character grows. A level 8 character has a couple of
+-- hours on the clock, so one crashed session is a large fraction of its entire
+-- life -- and it also has nothing worth cheating for. A level 50 character has
+-- hundreds of hours behind it and a certification that means something, and the
+-- same lost session is noise against the first and worth guarding for the
+-- second. Holding both to one percentage means the early character is the only
+-- one that can realistically fail it, which is backwards.
 --
--- Never FAILED at any size. Not being watched is not a violation.
-T.GAP_RATIO = 0.02
-T.GAP_SEVERE_RATIO = 0.05
--- A floor under both, so a brand new character is not held to a percentage of
--- almost nothing: five minutes is about what one crash or Lua error costs.
+--   level 1-5   50% of the run may be unobserved
+--   level 10    35%
+--   level 20    20%
+--   level 30    12%
+--   level 40     8%
+--   level 50+    5%
+--
+-- Anchors, not brackets. The share slides between them one level at a time, so
+-- no single ding costs meaningful headroom. Read as brackets the same table
+-- would halve the allowance on a level-up: a gap sitting comfortably inside
+-- tolerance at 20 would be outside it at 21, on a character that had done
+-- nothing in between but play. Tightening by a percent or two per level costs
+-- the same headroom over the same span without ever making levelling the thing
+-- that decided it.
+T.TOLERANCE_ANCHORS = {
+    {  5, 0.50 },
+    { 10, 0.35 },
+    { 20, 0.20 },
+    { 30, 0.12 },
+    { 40, 0.08 },
+    { 50, 0.05 },
+}
+
+-- What a character past the last anchor is held to -- and what an unknown level
+-- is held to as well. Leniency is something a record earns by demonstrating how
+-- young it is, so a level Rustcore cannot read gets the strict figure. Every
+-- consequence downstream is an absence-of-evidence verdict that watched play
+-- undoes, so a missing level costs headroom and never anything permanent.
+T.TOLERANCE_FLOOR = 0.05
+
+-- The four zones, as multiples of the allowance for the current level.
+--
+--   up to 80%    Verified. Nothing is recorded.
+--   80%..100%    Verified, with a note. The certification stands.
+--   100%..200%   Uncertain. Not certified at this moment, and explicitly earned
+--                back by playing on with Rustcore running.
+--   over 200%    Not verified. Still an absence of evidence rather than a
+--                violation, and still recoverable -- it simply takes
+--                proportionally more watched play to get back.
+--
+-- Never FAILED at any size. Not having been watched is not a rule violation,
+-- and no quantity of it turns into one.
+T.WARN_SHARE = 0.80
+T.UNVERIFIED_MULTIPLE = 2
+-- A floor under the allowance, so a brand new character is not held to a
+-- percentage of almost nothing: five minutes is about what one crash or one Lua
+-- error costs. A floor and not a grant -- it raises the allowance for a
+-- character too young to have earned a meaningful one, and does nothing at all
+-- once the percentage overtakes it, which happens within the first hour.
 T.GAP_MINIMUM = 300
 -- Below this, a measured gap is not recorded at all. Even measuring against one
 -- fixed anchor leaves a residue at every session boundary: the server counts the
@@ -89,20 +138,153 @@ function T.GetUntrackedSeconds()
     return record and record.time and record.time.untrackedSeconds or 0
 end
 
--- Plan section 17.
--- Where a gap stops being normal and starts being worth noting.
-function T.GetAllowedGap(totalPlayed)
-    totalPlayed = totalPlayed or T.GetLastServerPlayed()
-    return max(T.GAP_MINIMUM, (totalPlayed or 0) * T.GAP_RATIO)
+-- The share a level is entitled to, interpolated between the anchors above so
+-- that no single level costs more headroom than its neighbours.
+function T.ToleranceForLevel(level)
+    if type(level) ~= "number" then return T.TOLERANCE_FLOOR end
+    local anchors = T.TOLERANCE_ANCHORS
+    local prevLevel, prevShare
+    for i = 1, #anchors do
+        local atLevel, share = anchors[i][1], anchors[i][2]
+        if level <= atLevel then
+            -- Before the first anchor there is nothing to slide from, so the
+            -- opening allowance is flat across those levels.
+            if not prevLevel or atLevel <= prevLevel then return share end
+            return prevShare + (share - prevShare)
+                * ((level - prevLevel) / (atLevel - prevLevel))
+        end
+        prevLevel, prevShare = atLevel, share
+    end
+    return T.TOLERANCE_FLOOR
 end
 
--- Where a gap costs the certification. This is the number the tracking bar is
--- drawn against, because it is the one the player is actually running out of --
--- crossing the warning line above only annotates the record.
-function T.GetSevereGap(totalPlayed)
+-- The share in force right now.
+--
+-- Always the *current* level's share, never the one that applied when a gap
+-- happened. The question this module answers is "can this run be vouched for
+-- today", and today is the only tense it has: a gap recorded at level 12 and
+-- never added to is measured against level 12's allowance while the character
+-- is 12, and against level 40's once it gets there. That is also what makes
+-- playing on work, because the played total in the denominator grows a great
+-- deal faster than the share tightens.
+function T.GetTolerance(level)
+    if level == nil and V.GetPlayerLevel then level = V.GetPlayerLevel() end
+    return T.ToleranceForLevel(level)
+end
+
+-- Plan section 17. The unobserved time this character is allowed, in seconds.
+function T.GetAllowedGap(totalPlayed, level)
     totalPlayed = totalPlayed or T.GetLastServerPlayed()
-    return max(T.GAP_MINIMUM * (T.GAP_SEVERE_RATIO / T.GAP_RATIO),
-               (totalPlayed or 0) * T.GAP_SEVERE_RATIO)
+    return max(T.GAP_MINIMUM, (totalPlayed or 0) * T.GetTolerance(level))
+end
+
+-- ── The derived verdict ──────────────────────────────────────────────────────
+--
+-- Everything below is computed on demand from two sealed numbers -- the missing
+-- seconds and the server's /played total -- and none of what it concludes is
+-- written down anywhere. That is deliberate, and it is the whole of the design.
+-- A stored verdict is by construction a verdict that cannot improve, and this
+-- one has to be able to, because the thing it measures genuinely does get
+-- better when the player plays.
+--
+-- Recovery is not a loophole. The missing seconds never fall; what rises is the
+-- total they are a share of, and all of that rise has to be watched. Halving
+-- the missing share means doubling the character's entire played history;
+-- coming back from 20% missing to 5% means playing four times every hour the
+-- character has ever had. Nobody grinds their way out of a gap they created on
+-- purpose. Everybody whose client crashed once simply carries on and stops
+-- hearing about it, which is the entire population this rule is really about.
+
+local GAP_REASON = "playtime not observed: "
+
+local function FormatShort(seconds)
+    seconds = floor(max(0, tonumber(seconds) or 0))
+    local hours = floor(seconds / 3600)
+    local minutes = floor((seconds % 3600) / 60)
+    if hours > 0 then return ("%dh %02dm"):format(hours, minutes) end
+    return ("%dm"):format(minutes)
+end
+
+-- Missing time in seconds, with the session-boundary deadband applied.
+function T.GetMissingSeconds()
+    local missing = T.GetUntrackedSeconds() or 0
+    if missing < T.GAP_IGNORE then return 0 end
+    return missing
+end
+
+-- Missing time as a share of the whole run, derived fresh on every call. Nil
+-- when there is no played total to divide by, which is every moment before the
+-- first /played reply lands.
+function T.GetMissingPercent()
+    local played = T.GetLastServerPlayed()
+    if not played or played <= 0 then return nil end
+    return T.GetMissingSeconds() / played
+end
+
+-- The status that playtime coverage alone gives this run, and the reason for
+-- it. This is the function registered with V.RegisterComponent, so it is one of
+-- the inputs V.Compose takes the worst of -- it can hold a run back, and it can
+-- stop holding one back, but it can never lift anything else that is wrong.
+--
+-- The same answer serves both tracks on purpose. Time Rustcore did not see is
+-- missing from the difficulty run and from the Self-Found run equally; there is
+-- only one clock.
+--
+-- UNVERIFIED at the far end and never FAILED. A run this thinly covered cannot
+-- be vouched for, but nothing was detected either, and the distance between
+-- those two is the distance between a pause and an accusation.
+function T.ComponentStatus(level)
+    local record = V.GetRecord()
+    local state = record and record.time
+    -- Nothing measured yet. The anchor is set by the first /played reply and
+    -- everything before it is grandfathered (plan section 4).
+    if not state or not state.anchorPlayed then return nil end
+
+    local missing = T.GetMissingSeconds()
+    if missing <= 0 then return V.STATUS.VERIFIED end
+
+    local allowed = T.GetAllowedGap(state.lastServerPlayed, level)
+    if missing <= allowed * T.WARN_SHARE then return V.STATUS.VERIFIED end
+
+    -- Worded as time not observed rather than as an accusation: the
+    -- overwhelming cause is Rustcore having been switched off, or a client that
+    -- crashed with the character still logged in.
+    local detail = GAP_REASON .. ("%s unobserved of %s allowed"):format(
+        FormatShort(missing), FormatShort(allowed))
+
+    if missing <= allowed then return V.STATUS.WARNING, detail end
+    if missing <= allowed * T.UNVERIFIED_MULTIPLE then
+        return V.STATUS.UNCERTAIN, detail
+    end
+    return V.STATUS.UNVERIFIED, detail
+end
+
+-- How much further watched play brings the missing time back inside the
+-- allowance, in seconds. Zero when there is nothing to make up.
+--
+-- The allowance is a share of the played total and watched play raises that
+-- total without touching the gap, so the answer is just the played total at
+-- which the share finally covers the gap, less the played total already there:
+--
+--   required = missing / share - played
+--
+-- Recomputed on every call rather than pinned at the moment of the verdict, so
+-- it stays true across a level-up instead of being a promise made under a rule
+-- that has since changed. Levelling does move it, but the movement is small and
+-- the played term dominates it in every direction that matters.
+function T.GetRequiredTracked(level)
+    local missing = T.GetMissingSeconds()
+    if missing <= 0 then return 0 end
+
+    local played = T.GetLastServerPlayed() or 0
+    if missing <= T.GetAllowedGap(played, level) then return 0 end
+
+    local share = T.GetTolerance(level)
+    if not share or share <= 0 then return nil end
+
+    local required = (missing / share) - played
+    if required <= 0 then return 0 end
+    return required
 end
 
 -- ── Requesting /played ───────────────────────────────────────────────────────
@@ -238,40 +420,58 @@ end
 
 -- ── Reconciliation ───────────────────────────────────────────────────────────
 
-local function ApplyGapConsequence(state, gap, allowed, severe)
-    local band
-    if gap <= allowed then
-        band = "OK"
-    elseif gap < severe then
-        band = "WARNING"
-    else
-        -- Reaching the severe ratio is enough; it does not have to be exceeded.
-        band = "SEVERE"
-    end
+local TRACKS = { "difficulty", "selfFound" }
 
-    if band == state.gapBand or band == "OK" then
-        state.gapBand = state.gapBand or band
-        return
+-- Whether anything Rustcore actually caught stands against `trackName`.
+--
+-- An unwatched stretch is an absence of evidence; a violation is the presence
+-- of it, and the two do not cancel out. Used by the migration that hands old
+-- gap verdicts back to the component below: a record that was condemned by a
+-- gap *and* by something real must keep the real half.
+--
+-- Scoped to the one track, plus the record-wide integrity signal. A Self-Found
+-- trade is evidence about Self-Found and says nothing about whether the
+-- difficulty run was played honestly, so reading both tracks meant a single
+-- trade permanently blocked a recovery the difficulty track had every right to.
+--
+-- The gap no longer raises warnings of its own, so there is no longer a kind to
+-- exclude here; untrackedPlay is only still named because records written by
+-- older builds are carrying the counts those builds recorded, and a note about
+-- the gap must not be read as evidence against the gap.
+local function NothingElseRecorded(record, trackName)
+    if record and record.tamperReason then
+        return false, "record integrity is in question"
     end
-    -- Bands only ever escalate. A later reconciliation cannot talk a character
-    -- back down out of a gap that was already recorded.
-    if state.gapBand == "SEVERE" then return end
-    state.gapBand = band
+    local track = V.GetTrack(trackName)
+    if track then
+        if (track.violations or 0) > 0 then
+            return false, "a violation was recorded"
+        end
+        if type(track.warnings) == "table" then
+            for kind, count in pairs(track.warnings) do
+                if kind ~= "untrackedPlay" and (count or 0) > 0 then
+                    return false, "an unexplained change was recorded: " .. tostring(kind)
+                end
+            end
+        end
+    end
+    return true
+end
 
-    -- Worded as time not observed rather than as an accusation: the overwhelming
-    -- cause is Rustcore having been switched off, or a client that crashed.
-    local detail = ("%dm unobserved of %dm allowed"):format(
-        floor(gap / 60), floor(severe / 60))
-    if band == "WARNING" then
-        V.AddWarning("difficulty", "untrackedPlay", detail)
-        V.AddWarning("selfFound", "untrackedPlay", detail)
-    else
-        -- Too much of this character's life happened with nobody watching for a
-        -- certification to mean anything. UNVERIFIED, never FAILED -- there is no
-        -- violation here, only an absence of evidence.
-        V.SetStatus("difficulty", V.STATUS.UNVERIFIED, "playtime not observed: " .. detail)
-        V.SetStatus("selfFound", V.STATUS.UNVERIFIED, "playtime not observed: " .. detail)
-    end
+T.NothingElseRecorded = NothingElseRecorded
+
+-- Fields written by the build that stored its gap verdict instead of deriving
+-- it. Nothing reads them any more, and leaving them on the record would leave
+-- a stale verdict sitting next to a live one for anyone inspecting
+-- SavedVariables. Migration.ReleaseLegacyGapVerdict deals with the statuses
+-- those fields caused; this only clears the bookkeeping behind them.
+local function ClearLegacyGapState(state)
+    if not state then return end
+    state.gapBand = nil
+    state.gapGrace = nil
+    state.gapRatio = nil
+    state.gapFloor = nil
+    state.gapSuspended = nil
 end
 
 local function Reconcile(totalPlayed, levelPlayed)
@@ -288,7 +488,6 @@ local function Reconcile(totalPlayed, levelPlayed)
         state.anchorPlayed = totalPlayed
         state.trackedSinceAnchor = 0
         state.untrackedSeconds = 0
-        state.gapBand = "OK"
         if V.Integrity and V.Integrity.Append then
             V.Integrity.Append("TIME_ANCHOR", { played = floor(totalPlayed) })
         end
@@ -314,6 +513,13 @@ local function Reconcile(totalPlayed, levelPlayed)
     -- Keep the worst gap ever measured. Tracked time can drift slightly ahead
     -- of the server (a long loading screen accrues on our side but not on
     -- theirs), and without this a player could idle a detected gap away.
+    --
+    -- Seconds, and only seconds. What is kept here is the measurement, which
+    -- honestly never falls -- the time really was missed. The *share* it
+    -- represents is not stored at all and is derived fresh in ComponentStatus,
+    -- which is what lets it fall as the run grows around it. Storing the worst
+    -- share the way this stores the worst seconds is exactly the mistake that
+    -- made recovery impossible.
     if gap > (state.untrackedSeconds or 0) then
         state.untrackedSeconds = gap
     end
@@ -325,8 +531,12 @@ local function Reconcile(totalPlayed, levelPlayed)
         state.untrackedSeconds = 0
     end
 
-    ApplyGapConsequence(state, state.untrackedSeconds,
-        T.GetAllowedGap(totalPlayed), T.GetSevereGap(totalPlayed))
+    -- Nothing is decided here. The measurement above is the whole of this
+    -- module's output, and what it means for the certification is worked out on
+    -- demand by T.ComponentStatus -- which is precisely what lets the verdict
+    -- follow the number back down when watched play closes the gap.
+    ClearLegacyGapState(state)
+    if V.ComposeAll then V.ComposeAll() end
 
     if V.Integrity and V.Integrity.Seal then
         V.Integrity.Seal()
@@ -361,6 +571,10 @@ local function OnEvent(_, event, ...)
     elseif event == "PLAYER_LEVEL_UP" then
         Accrue()
         T.Request()
+        -- The allowance is a function of level, so the verdict can change on a
+        -- ding with nothing else having happened. Recomposed here so the panel
+        -- is right immediately rather than at the next five-minute poll.
+        if V.ComposeAll then V.ComposeAll() end
     elseif event == "PLAYER_LOGOUT" then
         -- Last chance to bank the tail of the session before SavedVariables is
         -- written. Does not fire on a crash or Alt-F4, in which case the whole
@@ -383,6 +597,13 @@ end
 function T.Init()
     if T.initialized then return end
     T.initialized = true
+
+    -- Registered before anything can ask for a status. Both tracks get the same
+    -- answer, because there is only one clock and the time it did not see is
+    -- missing from both runs equally.
+    if V.RegisterComponent then
+        V.RegisterComponent("time", function() return T.ComponentStatus() end)
+    end
 
     InstallChatSuppression()
 

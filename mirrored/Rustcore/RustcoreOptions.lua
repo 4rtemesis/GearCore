@@ -203,9 +203,12 @@ local DEPENDENT_TOGGLES = {
     { parentKey = "showStatsWindow",    field = "cbStatBestItem" },
     { parentKey = "showStatsWindow",    field = "cbStatsColoredNumbers" },
     { parentKey = "showDurabilityHUD",  field = "cbDurShowAll" },
+    { parentKey = "showDurabilityHUD",  field = "cbDurHorizontal" },
+    { parentKey = "showDurabilityHUD",  field = "cbDurBackground" },
     { parentKey = "showDurabilityHUD",  field = "cbDurGrowUpward" },
     { parentKey = "showDurabilityHUD",  field = "cbDurReverseOrder" },
     { parentKey = "showStatsWindow",    field = "cbStatsHorizontal" },
+    { parentKey = "showStatsWindow",   field = "cbStatsBackground" },
     { parentKey = "broadcastDeaths",    field = "cbGuildMessage" },
     { parentKey = "broadcastDeaths",    field = "cbRealmBroadcast" },
     { parentKey = "showDeathWarning",   field = "cbShowWarningSound" },
@@ -258,6 +261,10 @@ local function RefreshCombatLockState(frame)
         if locked then frame.minLevelSlider:Disable() else frame.minLevelSlider:Enable() end
         frame.minLevelSlider:SetAlpha(locked and 0.5 or 1)
     end
+    if frame.minQualitySlider then
+        if locked then frame.minQualitySlider:Disable() else frame.minQualitySlider:Enable() end
+        frame.minQualitySlider:SetAlpha(locked and 0.5 or 1)
+    end
     for _, slider in ipairs({ frame.deathlogOpacitySlider, frame.deathlogShadowSlider, frame.deathlogFontSlider }) do
         if slider then
             if locked then slider:Disable() else slider:Enable() end
@@ -286,10 +293,13 @@ local function RefreshCombatLockState(frame)
         frame.cbDeathlogItem,
         frame.cbDeathlogSource,
         frame.cbDurHUD,
+        frame.cbDurHorizontal,
+        frame.cbDurBackground,
         frame.cbDurShowAll,
         frame.cbDurGrowUpward,
         frame.cbDurReverseOrder,
         frame.cbStatsHorizontal,
+        frame.cbStatsBackground,
         frame.cbStatRusted,
         frame.cbStatBroken,
         frame.cbStatDeaths,
@@ -543,7 +553,7 @@ local function BuildOptionsFrame()
     appearanceScroll:EnableMouseWheel(true)
 
     local appearanceContent = CreateFrame("Frame", nil, appearanceScroll)
-    appearanceContent:SetSize(410, 560)
+    appearanceContent:SetSize(410, 660)
     appearanceScroll:SetScrollChild(appearanceContent)
 
     local appearanceScrollBar = appearanceScroll.ScrollBar
@@ -642,7 +652,7 @@ local function BuildOptionsFrame()
     profileDesc:SetPoint("TOPLEFT", profileHeader, "BOTTOMLEFT", 0, -6)
     profileDesc:SetWidth(360)
     profileDesc:SetJustifyH("LEFT")
-    profileDesc:SetText("Import settings from another character.")
+    profileDesc:SetText("Import settings from another character, or delete a character's stored data.")
     ApplyBodyFont(profileDesc, 14)
 
     -- Interface
@@ -657,6 +667,21 @@ local function BuildOptionsFrame()
         "Replaces WoW's native durability frame with per-slot artwork. Only slots near 0 durability are shown by default. Reload UI to restore the original durability frame after disabling.",
         cbMinimap, -4, "showDurabilityHUD")
 
+    -- Two columns under the HUD toggle, the same shape the Self-Found block
+    -- uses: the settings that tune the layout run down the left, and the
+    -- layout choice itself sits alone on the right. Declared first here but
+    -- anchored to the second column -- both columns hang off cbDurHUD at the
+    -- same yOff, so source order doesn't set what lands where, xOff does.
+    local cbDurHorizontal = MakeCheckbox(interfaceContent,
+        "Horizontal Display",
+        "Lays the durability counters out in a single row instead of a vertical stack. The row grows leftward from the HUD's right edge.",
+        cbDurHUD, -3, "durHUDHorizontal", 234, 20, 14)
+
+    local cbDurBackground = MakeCheckbox(interfaceContent,
+        "Panel Background",
+        "Draws the same rivet panel behind the durability counters that the stats window and death log use. It also pads the counters away from the edge so the border stays clear of them.",
+        cbDurHorizontal, -3, "durHUDBackground", 0, 20, 14)
+
     local cbDurShowAll = MakeCheckbox(interfaceContent,
         "Always Show All Slots",
         "Show durability for every equipped slot at all times, not just items with low durability.",
@@ -664,12 +689,12 @@ local function BuildOptionsFrame()
 
     local cbDurGrowUpward = MakeCheckbox(interfaceContent,
         "Grow Upward",
-        "Makes the durability HUD grow upward from its anchor point instead of downward.",
+        "Makes the durability HUD grow upward from its anchor point instead of downward. With Horizontal Display on it grows to the right instead of to the left.",
         cbDurShowAll, -3, "durHUDGrowUpward", 0, 20, 14)
 
     local cbDurReverseOrder = MakeCheckbox(interfaceContent,
         "Reverse Order",
-        "Reverses the durability HUD stack order, placing the most damaged item at the bottom instead of the top.",
+        "Reverses the durability HUD stack order, placing the most damaged item at the bottom instead of the top. In Horizontal Display it moves the most damaged item to the far end of the row instead.",
         cbDurGrowUpward, -3, "durHUDReverseOrder", 0, 20, 14)
 
     local cbStats = MakeCheckbox(interfaceContent,
@@ -680,12 +705,17 @@ local function BuildOptionsFrame()
     local cbStatsHorizontal = MakeCheckbox(interfaceContent,
         "Horizontal Display",
         "Arranges all stats window elements in a single row instead of two.",
-        cbStats, -3, "statsHorizontalLayout", 34, 20, 14)
+        cbStats, -3, "statsHorizontalLayout", 234, 20, 14)
+
+    local cbStatsBackground = MakeCheckbox(interfaceContent,
+        "Panel Background",
+        "Draws the rivet panel behind the stats window. Turning it off also drops the extra margin that was reserved for the panel border, letting the window pull its content in tighter.",
+        cbStatsHorizontal, -3, "statsBackground", 0, 20, 14)
 
     local cbStatRusted = MakeCheckbox(interfaceContent,
         "Rusted Counter",
         "Show the count of items worn down to zero durability.",
-        cbStatsHorizontal, -3, "statShowRusted", 0, 20, 14)
+        cbStats, -3, "statShowRusted", 34, 20, 14)
 
     local cbStatBroken = MakeCheckbox(interfaceContent,
         "Broken Counter",
@@ -776,6 +806,17 @@ local function BuildOptionsFrame()
         "Hides death messages, the center-screen warning, and the death log entry itself for players below this level. Set to Off to show all levels."
     )
 
+    -- Sits under Minimum Level because the two read as one pair: both narrow
+    -- the same three surfaces, one by who died and one by what it cost them.
+    local minQualitySlider = MakeSettingSlider(
+        notificationsContent,
+        "RustcoreDeathlogMinQualitySlider",
+        "Minimum Item Rarity",
+        -510, 0, 5, 1, "deathlogMinQuality",
+        function(value) return Rustcore.GetDeathQualityFilterName(value) end,
+        "Hides death messages, the center-screen warning, and the death log entry itself unless the death cost an item of at least this rarity. Set to Off to show every death, including ones that lost nothing."
+    )
+
     -- Appearance
     local statsAppearanceHeader = MakeHeader(appearanceContent, "Stats Panel", -20)
     local cbStatsColoredNumbers = MakeCheckbox(appearanceContent,
@@ -788,14 +829,16 @@ local function BuildOptionsFrame()
         "RustcoreStatsOpacitySlider",
         "Background Opacity",
         -97, 0, 1, 0.01, "statsBackgroundOpacity",
-        PercentFormatter
+        PercentFormatter,
+        "Only has an effect while Panel Background is switched on for the stats window."
     )
     local shadowSlider = MakeSettingSlider(
         appearanceContent,
         "RustcoreStatsShadowSlider",
-        "Dark Overlay",
+        "Dark Backdrop",
         -162, 0, 1, 0.01, "statsBackgroundShadow",
-        PercentFormatter
+        PercentFormatter,
+        "Only has an effect while Panel Background is switched on for the stats window."
     )
     MakeRule(appearanceContent, -217)
     MakeHeader(appearanceContent, "Death Log", -237)
@@ -809,7 +852,7 @@ local function BuildOptionsFrame()
     local deathlogShadowSlider = MakeSettingSlider(
         appearanceContent,
         "RustcoreDeathlogShadowSlider",
-        "Dark Overlay",
+        "Dark Backdrop",
         -347, 0, 1, 0.01, "deathlogBackgroundShadow",
         PercentFormatter
     )
@@ -819,6 +862,25 @@ local function BuildOptionsFrame()
         "Font Size",
         -412, 9, 16, 1, "deathlogFontSize",
         function(value) return tostring(value) end
+    )
+
+    MakeRule(appearanceContent, -467)
+    MakeHeader(appearanceContent, "Durability HUD", -487)
+    local durOpacitySlider = MakeSettingSlider(
+        appearanceContent,
+        "RustcoreDurabilityOpacitySlider",
+        "Background Opacity",
+        -532, 0, 1, 0.01, "durHUDBackgroundOpacity",
+        PercentFormatter,
+        "Only has an effect while Panel Background is switched on for the durability HUD."
+    )
+    local durShadowSlider = MakeSettingSlider(
+        appearanceContent,
+        "RustcoreDurabilityShadowSlider",
+        "Dark Backdrop",
+        -597, 0, 1, 0.01, "durHUDBackgroundShadow",
+        PercentFormatter,
+        "Only has an effect while Panel Background is switched on for the durability HUD."
     )
 
     -- About
@@ -842,15 +904,16 @@ local function BuildOptionsFrame()
     aboutBody:SetJustifyH("LEFT")
     aboutBody:SetWordWrap(true)
     aboutBody:SetText(
-        "Rustcore turns gear into something you can lose. Repair is off, and "
-        .. "dying destroys equipped items -- how many is up to the difficulty "
-        .. "you choose, from a single item at Broken to everything you are "
-        .. "wearing at Dust. Items worn down to zero durability rust away for "
-        .. "good.\n\n"
-        .. "Self-Found mode goes further and closes off trading, the auction "
-        .. "house and player mail, so everything you own you found yourself.\n\n"
-        .. "Rustcore keeps track of whether you have actually played by these "
-        .. "rules. The Verification tab shows what it can vouch for.")
+        "Rustcore is an optional challenge for WoW Classic, built to make gear "
+        .. "feel more meaningful and add a little more tension and immersion to "
+        .. "your character's journey. Play it as strictly or casually as you "
+        .. "like.\n\n"
+        .. "The addon also tracks whether a character has been following the "
+        .. "rules of their chosen difficulty and Self-Found settings. "
+        .. "Verification is purely for bragging rights and isn't required to "
+        .. "use any of Rustcore's features. It mainly affects the portrait "
+        .. "dragon and the Self-Found buff that other Rustcore players can see "
+        .. "when targeting you.")
     ApplyBodyFont(aboutBody, 14)
 
     local aboutJoin = temperedPage:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -858,8 +921,9 @@ local function BuildOptionsFrame()
     aboutJoin:SetPoint("TOPRIGHT", temperedPage, "TOPRIGHT", -26, 0)
     aboutJoin:SetJustifyH("LEFT")
     aboutJoin:SetWordWrap(true)
-    aboutJoin:SetText("Want to help build Rustcore? Have a look at the CurseForge "
-        .. "page description to find out how to get involved.")
+    aboutJoin:SetText("Found a bug, have an idea, or think something could be "
+        .. "improved? You can reach me through my free Patreon. Check the "
+        .. "Rustcore CurseForge page description for the link.")
     ApplyBodyFont(aboutJoin, 14)
     aboutJoin:SetTextColor(0.85, 0.75, 0.5)
 
@@ -1002,6 +1066,153 @@ local function BuildOptionsFrame()
         PlaySoundFile(Rustcore.GetAssetPath("Audio/ticksound2.wav"), "Master")
     end)
 
+    -- ── Deleting a character's stored data ───────────────────────────────────
+    --
+    -- Every table a character writes into, not just profiles. Leaving three of
+    -- the four behind is precisely how a deleted character's history came back
+    -- to haunt the next character to reuse the name: the profile was gone, but
+    -- the stats and the verification record were still sitting under the shared
+    -- name key, and were read as evidence of a past life.
+    local PROFILE_TABLES = {
+        "profiles", "characterStats", "selfFoundCharacters", "verification",
+    }
+
+    -- Every key the selected character could be filed under, minus every key
+    -- that might be ours.
+    --
+    -- The label scan is the same trick V.CandidateKeys uses, for the same
+    -- reason: a character keyed by GUID in one table and by name-realm in
+    -- another is still one character, and deleting half of it would leave
+    -- exactly the orphaned fragments this button exists to clear out.
+    --
+    -- The protection pass at the end is not paranoia. A deleted character and a
+    -- freshly made one with the same name share a characterLabel, which is the
+    -- single most likely reason anybody opens this menu -- so the sweep that
+    -- finds the old data will reach the live character too unless it is stopped.
+    -- Only the direct keys are protected, not V.CandidateKeys, because that
+    -- function's own label scan would hand back the foreign key as well and
+    -- quietly turn the whole thing into a no-op.
+    local function KeysForProfile(key)
+        local keys, seen = { key }, { [key] = true }
+
+        local function add(k)
+            if k and k ~= "" and not seen[k] then
+                seen[k] = true
+                keys[#keys + 1] = k
+            end
+        end
+
+        local profiles = type(RustcoreDB) == "table" and RustcoreDB.profiles or nil
+        local entry = type(profiles) == "table" and profiles[key] or nil
+        local label = type(entry) == "table" and entry.characterLabel or nil
+
+        if label then
+            if type(profiles) == "table" then
+                for k, profile in pairs(profiles) do
+                    if type(profile) == "table" and profile.characterLabel == label then
+                        add(k)
+                    end
+                end
+            end
+
+            -- A verification record can be keyed by a GUID that never reached
+            -- the profile table, so it has to be matched on what it knows about
+            -- itself rather than on where it happens to be filed.
+            local store = type(RustcoreDB) == "table" and RustcoreDB.verification or nil
+            if type(store) == "table" then
+                for k, record in pairs(store) do
+                    local id = type(record) == "table" and record.identity or nil
+                    if type(id) == "table" and id.name and id.realm
+                        and (id.name .. "-" .. id.realm) == label then
+                        add(k)
+                    end
+                end
+            end
+        end
+
+        local mine = {}
+        local function protect(k)
+            if k and k ~= "" then mine[k] = true end
+        end
+        protect(Rustcore.GetCharacterKey and Rustcore.GetCharacterKey())
+        protect(UnitGUID and UnitGUID("player"))
+        local name = UnitName and UnitName("player")
+        local realm = GetNormalizedRealmName and GetNormalizedRealmName()
+        if not realm or realm == "" then
+            realm = GetRealmName and GetRealmName() or nil
+        end
+        if name and realm and realm ~= "" then protect(name .. "-" .. realm) end
+        protect(name)
+
+        local out = {}
+        for _, k in ipairs(keys) do
+            if not mine[k] then out[#out + 1] = k end
+        end
+        return out
+    end
+
+    local function DeleteProfile(key)
+        if type(RustcoreDB) ~= "table" then return end
+        for _, k in ipairs(KeysForProfile(key)) do
+            for _, tableName in ipairs(PROFILE_TABLES) do
+                local t = RustcoreDB[tableName]
+                if type(t) == "table" then t[k] = nil end
+            end
+        end
+    end
+
+    -- Blizzard's own confirmation, because this is the one action in the addon
+    -- that destroys something the player cannot get back, and a dialog they
+    -- already recognise from deleting a character or an item says that faster
+    -- than anything custom could.
+    StaticPopupDialogs["RUSTCORE_DELETE_PROFILE"] = {
+        text = "Delete all Rustcore data for %s?\n\nSettings, statistics and verification history for that character will be removed. This cannot be undone.",
+        button1 = YES,
+        button2 = NO,
+        showAlert = true,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        -- Past the dialogs Blizzard's own protected code reuses, so ours cannot
+        -- taint one of them.
+        preferredIndex = 3,
+        OnAccept = function(self, data)
+            local key = data or self.data
+            if not key then return end
+            DeleteProfile(key)
+            if selectedProfileKey == key then selectedProfileKey = nil end
+            RefreshImportDropdownText()
+            PlaySoundFile(Rustcore.GetAssetPath("Audio/ticksound2.wav"), "Master")
+        end,
+    }
+
+    local deleteBtn = CreateFrame("Button", nil, gameplayPage, "UIPanelButtonTemplate")
+    deleteBtn:SetSize(82, 22)
+    deleteBtn:SetPoint("LEFT", importBtn, "RIGHT", 8, 0)
+    deleteBtn:SetText("Delete")
+    RustcoreTheme.SkinButton(deleteBtn)
+    ApplyBodyFont(deleteBtn:GetFontString(), 14)
+
+    deleteBtn:SetScript("OnClick", function()
+        if not selectedProfileKey then return end
+        if SettingsLocked() then
+            print("|cffff4444Rustcore:|r Settings cannot be changed while in combat.")
+            return
+        end
+
+        -- The label rather than the key, because the key is a GUID as often as
+        -- not and nobody can confirm a deletion they cannot read.
+        local profiles = RustcoreDB.profiles or {}
+        local source = profiles[selectedProfileKey]
+        local label = (type(source) == "table" and source.characterLabel)
+            or selectedProfileKey
+
+        local dialog = StaticPopup_Show("RUSTCORE_DELETE_PROFILE", label)
+        -- Captured now, so a dropdown change while the dialog is open cannot
+        -- redirect the deletion at somebody else.
+        if dialog then dialog.data = selectedProfileKey end
+    end)
+
     RefreshImportDropdownText()
 
     -- Verification tab. Built by Verification/UI.lua, which owns everything
@@ -1117,14 +1328,20 @@ local function BuildOptionsFrame()
     f.opacitySlider   = opacitySlider
     f.shadowSlider    = shadowSlider
     f.minLevelSlider  = minLevelSlider
+    f.minQualitySlider = minQualitySlider
     f.deathlogOpacitySlider = deathlogOpacitySlider
     f.deathlogShadowSlider = deathlogShadowSlider
     f.deathlogFontSlider = deathlogFontSlider
     f.cbDurHUD      = cbDurHUD
+    f.cbDurHorizontal = cbDurHorizontal
+    f.cbDurBackground = cbDurBackground
+    f.durOpacitySlider = durOpacitySlider
+    f.durShadowSlider  = durShadowSlider
     f.cbDurShowAll  = cbDurShowAll
     f.cbDurGrowUpward = cbDurGrowUpward
     f.cbDurReverseOrder = cbDurReverseOrder
     f.cbStatsHorizontal = cbStatsHorizontal
+    f.cbStatsBackground = cbStatsBackground
     f.cbDragonPlayerFrame = cbDragonPlayerFrame
     f.cbDragonTargetFrame = cbDragonTargetFrame
     f.importBtn     = importBtn
@@ -1160,14 +1377,20 @@ local function BuildOptionsFrame()
         self.opacitySlider:SetValue(Rustcore.GetSetting("statsBackgroundOpacity"))
         self.shadowSlider:SetValue(Rustcore.GetSetting("statsBackgroundShadow"))
         self.minLevelSlider:SetValue(Rustcore.GetSetting("deathlogMinLevel"))
+        self.minQualitySlider:SetValue(Rustcore.GetSetting("deathlogMinQuality"))
         self.deathlogOpacitySlider:SetValue(Rustcore.GetSetting("deathlogBackgroundOpacity"))
         self.deathlogShadowSlider:SetValue(Rustcore.GetSetting("deathlogBackgroundShadow"))
         self.deathlogFontSlider:SetValue(Rustcore.GetSetting("deathlogFontSize"))
         self.cbDurHUD:Refresh()
+        self.cbDurHorizontal:Refresh()
+        self.cbDurBackground:Refresh()
+        self.durOpacitySlider:SetValue(Rustcore.GetSetting("durHUDBackgroundOpacity"))
+        self.durShadowSlider:SetValue(Rustcore.GetSetting("durHUDBackgroundShadow"))
         self.cbDurShowAll:Refresh()
         self.cbDurGrowUpward:Refresh()
         self.cbDurReverseOrder:Refresh()
         self.cbStatsHorizontal:Refresh()
+        self.cbStatsBackground:Refresh()
         self.cbStatRusted:Refresh()
         self.cbStatBroken:Refresh()
         self.cbStatDeaths:Refresh()

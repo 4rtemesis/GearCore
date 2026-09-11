@@ -14,6 +14,12 @@ local SLIDER_THUMB_WIDTH = 14
 local SLIDER_THUMB_HEIGHT = 36
 local EXIT_BUTTON_SIZE = 22
 local FRAME_BACKGROUND_ALPHA = 0.78
+
+-- Native pixel size of the top/bottom edge strip. It is not a power of two, so
+-- the GPU cannot wrap it: a repeating edge has to be laid out as real texture
+-- instances rather than asked for with SetHorizTile.
+local EDGE_TILE_ASPECT = 1231 / 88
+
 local DIFFICULTY_BACKGROUNDS = {
     [1] = "background1 copy.tga",
     [2] = "background2 copy.tga",
@@ -380,7 +386,7 @@ function RustcoreTheme.SkinCheckbox(checkbox)
     checkbox.rustcoreThemeCheckboxSkin = true
 end
 
-function RustcoreTheme.CreateRivetPanelArt(parent, opacity, shadowOpacity, borderSize)
+function RustcoreTheme.CreateRivetPanelArt(parent, opacity, shadowOpacity, borderSize, tileEdges)
     opacity = opacity or FRAME_BACKGROUND_ALPHA
     shadowOpacity = shadowOpacity or 0
     borderSize = borderSize or FRAME_INSET
@@ -493,6 +499,75 @@ function RustcoreTheme.CreateRivetPanelArt(parent, opacity, shadowOpacity, borde
     shadowBorderPieces[6] = topRightShadow
     shadowBorderPieces[7] = bottomLeftShadow
     shadowBorderPieces[8] = bottomRightShadow
+
+    -- Optional repeating top/bottom edge. The default is one copy stretched
+    -- across the whole span, which is fine on a tall window but smears badly
+    -- on something as short and wide as the durability row. Tiling draws the
+    -- art at its own aspect instead, repeated end to end, so the rivets keep
+    -- their real spacing whatever the panel's width.
+    --
+    -- Only the last tile in a row is cropped, via texture coordinates, and the
+    -- pool only ever grows. A tile is registered into pieces/shadowPieces while
+    -- it is on screen and unregistered once the panel shrinks past it, so the
+    -- alpha and show/hide loops callers run over those tables always see
+    -- exactly the tiles that are visible -- and never revive a stale one.
+    if tileEdges then
+        local edges = {
+            { base = "top",    anchor = "TOPLEFT",    art = "newstatsUB.tga",
+              registry = pieces,       tiles = { top } },
+            { base = "bottom", anchor = "BOTTOMLEFT", art = "newstatsBB.tga",
+              registry = pieces,       tiles = { bottom } },
+            { base = "top",    anchor = "TOPLEFT",    art = "newstatsUB.tga",
+              registry = shadowPieces, tiles = { topShadow },    shadow = true },
+            { base = "bottom", anchor = "BOTTOMLEFT", art = "newstatsBB.tga",
+              registry = shadowPieces, tiles = { bottomShadow }, shadow = true },
+        }
+
+        local function LayoutEdgeTiles()
+            local span = parent:GetWidth()
+            if not span then return end
+            span = span - borderSize * 2
+            if span <= 0 then return end
+
+            local tileW = borderSize * EDGE_TILE_ASPECT
+            -- The epsilon keeps an exact fit from rounding up into a sliver.
+            local wanted = math.max(1, math.ceil(span / tileW - 0.002))
+
+            for _, edge in ipairs(edges) do
+                for index = 1, wanted do
+                    local key = index == 1 and edge.base or (edge.base .. index)
+                    local tile = edge.tiles[index]
+                    if not tile then
+                        if edge.shadow then
+                            tile = CreateShadowPiece(key, edge.art)
+                        else
+                            tile = CreatePiece(key, edge.art, "ARTWORK")
+                        end
+                        -- Born matching the tile that is already correct, so a
+                        -- resize after an opacity change can't create a tile at
+                        -- the alpha the panel had when it was first built.
+                        tile:SetAlpha(edge.tiles[1]:GetAlpha())
+                        if edge.tiles[1]:IsShown() then tile:Show() else tile:Hide() end
+                        edge.tiles[index] = tile
+                    end
+                    local used = math.max(1, math.min(tileW, span - (index - 1) * tileW))
+                    tile:ClearAllPoints()
+                    tile:SetPoint(edge.anchor, parent, edge.anchor,
+                        borderSize + (index - 1) * tileW, 0)
+                    tile:SetSize(used, borderSize)
+                    tile:SetTexCoord(0, used / tileW, 0, 1)
+                    edge.registry[key] = tile
+                end
+                for index = wanted + 1, #edge.tiles do
+                    edge.registry[edge.base .. index] = nil
+                    edge.tiles[index]:Hide()
+                end
+            end
+        end
+
+        parent:HookScript("OnSizeChanged", LayoutEdgeTiles)
+        LayoutEdgeTiles()
+    end
 
     return {
         pieces = pieces,

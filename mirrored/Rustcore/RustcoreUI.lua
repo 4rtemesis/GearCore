@@ -1040,6 +1040,13 @@ RemoveFirstPendingItem = function(countDestroyed)
     StopProcessingTicker()
     StopStatusUpdateTicker()
 
+    -- Slightly delayed: the deletion has to land on the server and clear the
+    -- slot before a sweep counting copies of the item can tell one has gone.
+    if RustcoreVerification and RustcoreVerification.DeathLoss
+        and RustcoreVerification.DeathLoss.Sweep and C_Timer then
+        C_Timer.After(0.5, RustcoreVerification.DeathLoss.Sweep)
+    end
+
     if #pendingItems == 0 then
         activeSpinIcons = nil
         RustcoreDB.pendingDeletionSnapshot = nil

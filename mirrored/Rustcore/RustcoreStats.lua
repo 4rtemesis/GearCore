@@ -18,6 +18,9 @@ local BACKGROUND_ALPHA = 0.78
 local STATS_BORDER_SIZE = 18
 local STATS_CONTENT_EDGE_PAD = 22
 local TEXT_PAD = 10
+-- Margin used when the panel background is off and there is no border to
+-- clear. Not zero: text still needs to breathe away from the window edge.
+local BARE_TEXT_PAD = 4
 -- Horizontal layout packs graphics much closer to the window's left/right
 -- edges than the two-row layout does, so it gets its own, roomier side
 -- margin instead of sharing TEXT_PAD.
@@ -259,11 +262,31 @@ local function SaveSize(frame)
     })
 end
 
+-- The side margin exists only to hold content clear of the border art, so it
+-- follows the background on and off rather than being a setting of its own.
+-- With the panel hidden there is no border to clear, and the window can pull
+-- its content back to the ordinary text margins.
+local function ContentEdgePad()
+    return Rustcore.GetSetting("statsBackground") and STATS_CONTENT_EDGE_PAD or 0
+end
+
+-- Same idea on the vertical axis. This one matters more than it looks: the
+-- counters are capped at a multiple of the row height, not the column width,
+-- so trimming only the sides leaves them exactly the size they already were.
+-- Reclaiming the top and bottom margin is what actually makes them grow.
+local function ContentTextPad()
+    return Rustcore.GetSetting("statsBackground") and TEXT_PAD or BARE_TEXT_PAD
+end
+
 -- The horizontal layout packs everything into one row of graphics, so it
 -- doesn't need the taller minimum the two-row layout requires to avoid
 -- clipping; letting it go shorter is what makes a wide-but-short bar possible.
 local function GetMinHeight()
-    return Rustcore.GetSetting("statsHorizontalLayout") and MIN_HEIGHT_HORIZONTAL or MIN_HEIGHT
+    local base = Rustcore.GetSetting("statsHorizontalLayout") and MIN_HEIGHT_HORIZONTAL or MIN_HEIGHT
+    -- Both floors were measured with the panel's margins in place. Without the
+    -- background those margins are gone, so the same content fits in a shorter
+    -- window; holding the old floor would re-impose the padding by another name.
+    return base - (TEXT_PAD - ContentTextPad()) * 2
 end
 
 local function ApplyResizeBounds()
@@ -328,10 +351,10 @@ function RustcoreStats.RefreshLayout()
     if not statsFrame then return end
     ApplyResizeBounds()
     local width, height = statsFrame:GetSize()
-    local pad = TEXT_PAD
+    local pad = ContentTextPad()
     local horizontal = Rustcore.GetSetting("statsHorizontalLayout")
-    local sidePad = math.max(horizontal and HORIZONTAL_SIDE_PAD or pad, STATS_CONTENT_EDGE_PAD)
-    local bestSidePad = math.max(BEST_ITEM_SIDE_PAD, STATS_CONTENT_EDGE_PAD)
+    local sidePad = math.max(horizontal and HORIZONTAL_SIDE_PAD or pad, ContentEdgePad())
+    local bestSidePad = math.max(BEST_ITEM_SIDE_PAD, ContentEdgePad())
     local contentWidth = math.max(1, width - (sidePad * 2))
     local bestContentWidth = math.max(1, width - (bestSidePad * 2))
     local contentHeight = math.max(1, height - (pad * 2))
@@ -530,13 +553,13 @@ local function GetAutoFitWidth()
         local totalWidth = (counterCellWidth * visibleCounterCount)
             + bottomWidth
             + (math.max(0, slotCount - 1) * COLUMN_GAP)
-        return Clamp(math.ceil(totalWidth + (math.max(HORIZONTAL_SIDE_PAD, STATS_CONTENT_EDGE_PAD) * 2)), MIN_WIDTH, MAX_WIDTH)
+        return Clamp(math.ceil(totalWidth + (math.max(HORIZONTAL_SIDE_PAD, ContentEdgePad()) * 2)), MIN_WIDTH, MAX_WIDTH)
     end
 
     local topWidth = (counterCellWidth * visibleCounterCount)
         + (math.max(0, visibleCounterCount - 1) * COLUMN_GAP)
-    local requiredTopWidth = topWidth + (math.max(TEXT_PAD, STATS_CONTENT_EDGE_PAD) * 2)
-    local requiredBottomWidth = bottomWidth + (math.max(BEST_ITEM_SIDE_PAD, STATS_CONTENT_EDGE_PAD) * 2)
+    local requiredTopWidth = topWidth + (math.max(ContentTextPad(), ContentEdgePad()) * 2)
+    local requiredBottomWidth = bottomWidth + (math.max(BEST_ITEM_SIDE_PAD, ContentEdgePad()) * 2)
     return Clamp(math.ceil(math.max(requiredTopWidth, requiredBottomWidth)), MIN_WIDTH, MAX_WIDTH)
 end
 
@@ -549,7 +572,15 @@ end
 local function BuildStatsFrame()
     local f = CreateFrame("Frame", "RustcoreStatsFrame", UIParent)
     ApplySavedSize(f)
-    f:SetFrameStrata("MEDIUM")
+    -- Behind the action bars, griffins included. The panel is something the
+    -- player glances at, not something they act on, so it has no business
+    -- covering the bar they are actually using -- and the griffin end caps
+    -- overhang far enough that a panel parked near them clips the artwork.
+    -- BACKGROUND rather than LOW because the bar itself sits at LOW, and
+    -- sharing a strata would settle it on frame level, which is not ours to
+    -- decide. Mouse input is unaffected: nothing overlapping means nothing
+    -- swallowing the click.
+    f:SetFrameStrata("BACKGROUND")
     f:SetMovable(true)
     if f.SetResizable then f:SetResizable(true) end
     f:EnableMouse(true)
@@ -764,6 +795,7 @@ local function BuildStatsFrame()
     f.resizeGrip = resizeGrip
     ApplySavedPosition(f)
     statsFrame = f
+    RustcoreStats.ApplyBackgroundVisibility()
     RustcoreStats.RefreshLayout()
     RefreshText()
 
@@ -797,7 +829,31 @@ function RustcoreStats.Refresh()
 end
 
 function RustcoreStats.RefreshStyle()
+    RustcoreStats.ApplyBackgroundVisibility()
     RustcoreStats.RefreshBackgroundOpacity()
+end
+
+-- The art is built once and toggled, rather than created and destroyed, so
+-- flipping the setting can't leak textures across a session.
+function RustcoreStats.ApplyBackgroundVisibility()
+    if not statsFrame then return end
+    local on = Rustcore.GetSetting("statsBackground") and true or false
+    for _, piece in pairs(statsFrame.backgroundPieces or {}) do
+        if on then piece:Show() else piece:Hide() end
+    end
+    for _, piece in pairs(statsFrame.backgroundShadowPieces or {}) do
+        if on then piece:Show() else piece:Hide() end
+    end
+    if statsFrame.shade then
+        if on then statsFrame.shade:Show() else statsFrame.shade:Hide() end
+    end
+end
+
+-- Hiding the panel frees the margin that was reserved for its border, so the
+-- layout has to re-run; the auto-fit width floor moves with it.
+function RustcoreStats.HandleBackgroundChanged()
+    RustcoreStats.ApplyBackgroundVisibility()
+    RustcoreStats.RefreshLayout()
 end
 
 function RustcoreStats.RefreshBackgroundOpacity()

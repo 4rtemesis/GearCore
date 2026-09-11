@@ -12,6 +12,45 @@ local FRAME_W           = 110
 local FRAME_H           = 38
 local SLOT_GAP          = -2
 
+-- Horizontal mode sits the frames side by side instead of stacking them, so
+-- SLOT_GAP's overlap does not carry over: it exists to hide a transparent
+-- sliver along the *bottom* edge of the frame art, and side-by-side frames
+-- never put that edge over anything. What the art does carry on its left and
+-- right edges is padding, which reads as a wide gutter once the frames sit
+-- flush -- so this pulls them back together by roughly that much. Tune here;
+-- nothing else depends on the value.
+local H_SLOT_GAP        = -4
+
+-- Optional panel background (durHUDBackground). Reuses the same rivet art as
+-- the stats window and the death log so the three read as one set.
+--
+-- BG_BORDER is how wide that art draws its border; the BG_PAD values are how
+-- far the counters are held off each container edge.
+--
+-- They are split per side rather than shared because an even inset does not
+-- read as even here. The counter artwork carries more dead space along its
+-- right edge than its left, so a matching right inset looks like a wider
+-- gutter; trimming it is what actually centres the row. Top and bottom sit
+-- slightly inside the border for the same reason -- the counter frames are
+-- only 38 tall, and a full border's worth of clearance above and below left
+-- the panel looking mostly empty.
+--
+-- Undershooting the border is safe: the counters are child frames, so they
+-- always draw above the parent's border textures. A smaller inset tucks a
+-- counter nearer the border, it never lets the border cover one.
+local HUD_BG_BORDER     = 14
+local HUD_BG_PAD_LEFT   = 14
+local HUD_BG_PAD_RIGHT  = 8
+local HUD_BG_PAD_VERT   = 11
+local HUD_BG_ALPHA      = 0.78
+
+-- The padding exists only to clear the border art, so it follows the
+-- background on and off instead of being a setting of its own.
+local function BackgroundPadding()
+    if not Rustcore.GetSetting("durHUDBackground") then return 0, 0, 0 end
+    return HUD_BG_PAD_LEFT, HUD_BG_PAD_RIGHT, HUD_BG_PAD_VERT
+end
+
 -- Counter frame overlay art is 1890x558 (native); stretched to FRAME_W at full
 -- height it squashes the icon cutout into a tall rectangle, so the overlay is
 -- sized to this shorter height (and vertically centered) to keep the cutout square.
@@ -241,11 +280,23 @@ local lastDurabilityBySlot = {} -- slot id -> durability last seen there for
                                  -- the item currently in lastLinkBySlot; used
                                  -- to detect the >0 -> 0 "just broke" edge
 
--- Anchor corner used to pin the HUD container: a top-based corner keeps the
--- top edge fixed and lets rows extend downward as they're added; a
--- bottom-based corner keeps the bottom edge fixed so rows extend upward.
+-- Anchor corner used to pin the HUD container. The edges the corner names are
+-- the ones that stay put when the HUD resizes, so the corner is what actually
+-- decides which way the counters grow.
+--
+-- A vertical stack changes height, so the choice is between pinning the top
+-- edge (rows extend downward) and the bottom (rows extend upward). A
+-- horizontal row changes width instead and its height never varies, which
+-- leaves Grow Upward no vertical growth to steer -- so on that axis it picks
+-- the pinned side instead: left edge fixed means the row extends rightward.
+-- Same setting, same idea (grow away from the far edge rather than toward it),
+-- applied to the axis the current layout actually moves along.
 local function GetHUDAnchorCorner()
-    return Rustcore.GetSetting("durHUDGrowUpward") and "BOTTOMRIGHT" or "TOPRIGHT"
+    local grow = Rustcore.GetSetting("durHUDGrowUpward")
+    if Rustcore.GetSetting("durHUDHorizontal") then
+        return grow and "TOPLEFT" or "TOPRIGHT"
+    end
+    return grow and "BOTTOMRIGHT" or "TOPRIGHT"
 end
 
 -- Keep at least this many pixels of the HUD on-screen along each axis, so a
@@ -275,6 +326,28 @@ local function GetRightActionBarShift()
     return shift
 end
 
+-- Each corner expressed as the direction an offset must move along each axis
+-- to travel *into* the screen from that corner. The clamp and convert helpers
+-- below work in that neutral "distance from my own anchored edge" space and
+-- multiply by the sign to get back to real offsets, so one piece of math
+-- covers all four corners instead of a per-corner branch in four places.
+local CORNER_SIGNS = {
+    TOPRIGHT    = { x = -1, y = -1 },
+    BOTTOMRIGHT = { x = -1, y =  1 },
+    TOPLEFT     = { x =  1, y = -1 },
+    BOTTOMLEFT  = { x =  1, y =  1 },
+}
+
+-- Deterministic order for "any other saved corner will do" fallbacks. pairs()
+-- would find one too, but not the same one twice -- and a seeded position that
+-- varies between logins is the exact drift this per-corner table exists to
+-- prevent.
+local CORNER_ORDER = { "TOPRIGHT", "BOTTOMRIGHT", "TOPLEFT", "BOTTOMLEFT" }
+
+local function CornerSigns(corner)
+    return CORNER_SIGNS[corner] or CORNER_SIGNS.TOPRIGHT
+end
+
 local function ClampEdgeOffset(offset, frameSize, screenSize)
     -- offset grows as the frame moves away from its anchored edge. The far
     -- bound scales with the SCREEN (how far it can travel before it's gone),
@@ -285,52 +358,64 @@ local function ClampEdgeOffset(offset, frameSize, screenSize)
     return Clamp(offset, lo, hi)
 end
 
--- Both anchor corners sit on the right, so x always has the same sense
--- (moving into the screen is negative x); y's sense flips with the corner.
--- Clamping the corner-agnostic "distance from the anchored edge, growing
--- into the screen" form lets the same bounds apply correctly on both axes,
--- and guarantees the result can never end up off-screen.
+-- Clamping in the corner-agnostic "distance from the anchored edge, growing
+-- into the screen" form lets one set of bounds apply correctly on both axes
+-- and from any corner, and guarantees the result can never end up off-screen.
 local function ClampToScreen(corner, x, y, w, h, sw, sh)
-    local edgeX = ClampEdgeOffset(-x, w, sw)
-    local edgeY = ClampEdgeOffset((corner == "TOPRIGHT") and -y or y, h, sh)
-    return -edgeX, (corner == "TOPRIGHT") and -edgeY or edgeY
+    local s = CornerSigns(corner)
+    -- Multiplying by the sign moves into that space; multiplying by it again
+    -- moves back, since every sign is +/-1.
+    local edgeX = ClampEdgeOffset(x * s.x, w, sw)
+    local edgeY = ClampEdgeOffset(y * s.y, h, sh)
+    return edgeX * s.x, edgeY * s.y
 end
 
--- Re-express a saved offset in the other corner's coordinate space while
--- keeping the HUD's actual on-screen position unchanged. Both corners share
--- UIParent's right edge, so only Y needs conversion: a y-offset means
--- "distance below the top edge" relative to a top corner but "distance
--- above the bottom edge" relative to a bottom corner.
-local function ConvertCornerOffset(fromCorner, y, h, screenHeight)
-    if fromCorner == "TOPRIGHT" then
-        local topDist = -y
-        return screenHeight - topDist - h -- now a bottom-distance
-    else
-        local bottomDist = y
-        return -(screenHeight - bottomDist - h) -- now a top-distance
+-- Re-express a saved offset in another corner's coordinate space while keeping
+-- the HUD's actual on-screen position unchanged. An offset means "distance
+-- from my own edge", so an axis only needs converting when the two corners sit
+-- on opposite edges of it: the same pixel is then the screen span, less the
+-- frame size, less the original distance -- measured from the other side.
+local function ConvertCornerOffset(fromCorner, toCorner, x, y, w, h, sw, sh)
+    local from, to = CornerSigns(fromCorner), CornerSigns(toCorner)
+    local nx, ny = x, y
+    if from.x ~= to.x then
+        nx = to.x * (sw - (x * from.x) - w)
     end
+    if from.y ~= to.y then
+        ny = to.y * (sh - (y * from.y) - h)
+    end
+    return nx, ny
 end
 
--- Best-effort seed for the very first time the HUD is ever shown (no saved
--- position yet): mirror wherever Blizzard's own DurabilityFrame currently
--- sits on screen, converted into an offset from our anchor corner, so the
--- custom HUD starts out where players already expect it. Uses the resolved
--- on-screen extents (not GetPoint's raw anchor) so it works no matter what
--- frame the native durability frame happens to be anchored to. Returns nil
--- if the native frame isn't laid out yet, so callers can fall back.
+-- Best-effort seed the very first time the HUD is ever shown (no saved
+-- position yet): mirror wherever Blizzard's own DurabilityFrame currently sits
+-- on screen, converted into an offset from our anchor corner, so the custom
+-- HUD starts out where players already expect it. Uses resolved on-screen
+-- extents (not GetPoint's raw anchor) so it works no matter what frame the
+-- native durability frame happens to be anchored to. Returns nil if the native
+-- frame isn't laid out yet, so callers can fall back.
 local function GetNativeDurabilityDefault(corner)
     if not DurabilityFrame or not DurabilityFrame.GetRight then return nil end
-    local right, top, bottom = DurabilityFrame:GetRight(), DurabilityFrame:GetTop(), DurabilityFrame:GetBottom()
-    local uiRight, uiTop, uiBottom = UIParent:GetRight(), UIParent:GetTop(), UIParent:GetBottom()
-    if not (right and top and bottom and uiRight and uiTop and uiBottom) then return nil end
+    local left, right = DurabilityFrame:GetLeft(), DurabilityFrame:GetRight()
+    local top, bottom = DurabilityFrame:GetTop(), DurabilityFrame:GetBottom()
+    local uiLeft, uiRight = UIParent:GetLeft(), UIParent:GetRight()
+    local uiTop, uiBottom = UIParent:GetTop(), UIParent:GetBottom()
+    if not (left and right and top and bottom
+            and uiLeft and uiRight and uiTop and uiBottom) then return nil end
 
-    local x = right - uiRight - DEFAULT_X_INSET - GetRightActionBarShift()
-    local y = (corner == "BOTTOMRIGHT") and (bottom - uiBottom) or (top - uiTop)
+    local s = CornerSigns(corner)
+    -- The inset pushes the HUD further into the screen, which is the sign's
+    -- direction by definition. The action-bar dodge is right-side-specific, so
+    -- it only applies when the HUD is actually hugging the right edge.
+    local shift = (s.x < 0) and GetRightActionBarShift() or 0
+    local x = ((s.x < 0) and (right - uiRight) or (left - uiLeft))
+              + (DEFAULT_X_INSET + shift) * s.x
+    local y = (s.y > 0) and (bottom - uiBottom) or (top - uiTop)
     return x, y
 end
 
--- Saved positions are kept per-corner ({ TOPRIGHT = {x,y}, BOTTOMRIGHT =
--- {x,y} }) instead of one spot that gets converted back and forth on every
+-- Saved positions are kept per-corner ({ TOPRIGHT = {x,y}, BOTTOMLEFT =
+-- {x,y}, ... }) instead of one spot that gets converted back and forth on every
 -- toggle. Once a corner has been used, switching back to it is a plain table
 -- lookup with no runtime math — nothing left to drift or jump on repeat
 -- toggles. Old saves used a flat { point, x, y } shape; migrate those in.
@@ -342,28 +427,34 @@ local function GetHUDPosTable()
     return raw or {}
 end
 
--- A corner with nothing saved yet is seeded once: converted from the other
+-- A corner with nothing saved yet is seeded once: converted from another
 -- corner's spot if one exists (so it starts out looking like the HUD didn't
 -- move at all), otherwise from Blizzard's native frame or a hardcoded
 -- fallback. Returns whether a seed was needed so the caller knows to persist it.
 --
 -- As long as the user has never actually dragged the HUD (raw.userMoved),
 -- a "saved" corner here is really just last session's auto-seed, not a
--- real placement choice — so it's recomputed fresh instead of reused. That's
+-- real placement choice -- so it's recomputed fresh instead of reused. That's
 -- what lets the default spot auto-adjust for right-side action bars turning
 -- on/off between sessions without ever touching a position the user picked.
-local function GetOrSeedCornerPos(corner, raw, h, sh)
+local function GetOrSeedCornerPos(corner, raw, w, h, sw, sh)
     local saved = raw[corner]
     if saved and raw.userMoved then return saved.x, saved.y, false end
 
-    local otherCorner = (corner == "TOPRIGHT") and "BOTTOMRIGHT" or "TOPRIGHT"
-    local other = raw[otherCorner]
-    if other and raw.userMoved then
-        return other.x, ConvertCornerOffset(otherCorner, other.y, h, sh), true
+    if raw.userMoved then
+        for _, other in ipairs(CORNER_ORDER) do
+            local pos = (other ~= corner) and raw[other] or nil
+            if pos then
+                local nx, ny = ConvertCornerOffset(other, corner, pos.x, pos.y, w, h, sw, sh)
+                return nx, ny, true
+            end
+        end
     end
 
     local nx, ny = GetNativeDurabilityDefault(corner)
-    return nx or (-60 - GetRightActionBarShift()), ny or (corner == "BOTTOMRIGHT" and 220 or -220), true
+    local s = CornerSigns(corner)
+    local shift = (s.x < 0) and GetRightActionBarShift() or 0
+    return nx or ((60 + shift) * s.x), ny or (220 * s.y), true
 end
 
 -- This only ever runs at init, on manual drag-stop, or when the grow-upward
@@ -375,7 +466,7 @@ local function ApplyHUDPosition()
     local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
 
     local raw = GetHUDPosTable()
-    local x0, y0, isNew = GetOrSeedCornerPos(corner, raw, h, sh)
+    local x0, y0, isNew = GetOrSeedCornerPos(corner, raw, w, h, sw, sh)
     local x, y = ClampToScreen(corner, x0, y0, w, h, sw, sh)
 
     hudContainer:ClearAllPoints()
@@ -406,15 +497,19 @@ end
 -- resulting x, y, or nil if the live rect isn't available yet.
 local function ReanchorToFixedCorner(corner)
     if not hudContainer then return nil end
-    local right, top, bottom = hudContainer:GetRight(), hudContainer:GetTop(), hudContainer:GetBottom()
-    local uiRight, uiTop, uiBottom = UIParent:GetRight(), UIParent:GetTop(), UIParent:GetBottom()
-    if not (right and top and bottom and uiRight and uiTop and uiBottom) then return nil end
+    local left, right = hudContainer:GetLeft(), hudContainer:GetRight()
+    local top, bottom = hudContainer:GetTop(), hudContainer:GetBottom()
+    local uiLeft, uiRight = UIParent:GetLeft(), UIParent:GetRight()
+    local uiTop, uiBottom = UIParent:GetTop(), UIParent:GetBottom()
+    if not (left and right and top and bottom
+            and uiLeft and uiRight and uiTop and uiBottom) then return nil end
 
     local w, h = hudContainer:GetWidth(), hudContainer:GetHeight()
     local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
 
-    local x0 = right - uiRight
-    local y0 = (corner == "BOTTOMRIGHT") and (bottom - uiBottom) or (top - uiTop)
+    local s = CornerSigns(corner)
+    local x0 = (s.x < 0) and (right - uiRight) or (left - uiLeft)
+    local y0 = (s.y > 0) and (bottom - uiBottom) or (top - uiTop)
     local x, y = ClampToScreen(corner, x0, y0, w, h, sw, sh)
 
     hudContainer:ClearAllPoints()
@@ -422,8 +517,9 @@ local function ReanchorToFixedCorner(corner)
     return x, y
 end
 
--- Re-anchors to the opposite corner in response to the grow-upward setting
--- changing, keeping the HUD pixel-identical on screen.
+-- Re-anchors to a different corner when a setting changes which edges are
+-- meant to stay put, keeping the HUD pixel-identical on screen while it
+-- happens.
 local function RepositionForAnchorChange()
     if not hudContainer then return end
     local corner = GetHUDAnchorCorner()
@@ -608,6 +704,22 @@ local function BuildSlotFrame(parent, slotId)
     return f
 end
 
+-- The art is built once and toggled, rather than created and destroyed, so
+-- flipping the setting can't leak textures across a session.
+local function ApplyBackgroundVisibility()
+    if not hudContainer then return end
+    local on = Rustcore.GetSetting("durHUDBackground") and true or false
+    for _, piece in pairs(hudContainer.backgroundPieces or {}) do
+        if on then piece:Show() else piece:Hide() end
+    end
+    for _, piece in pairs(hudContainer.backgroundShadowPieces or {}) do
+        if on then piece:Show() else piece:Hide() end
+    end
+    if hudContainer.shade then
+        if on then hudContainer.shade:Show() else hudContainer.shade:Hide() end
+    end
+end
+
 local function BuildHUD()
     if hudContainer then return end
 
@@ -623,7 +735,23 @@ local function BuildHUD()
     f:SetScript("OnDragStop", StopHUDDrag)
     f:HookScript("OnHide", StopHUDDrag)
 
+    -- Panel art goes on the container rather than a child frame: a frame's own
+    -- textures always draw below its child frames, so the slot frames sit on top
+    -- of this without anyone having to manage frame levels.
+    local panelArt = RustcoreTheme.CreateRivetPanelArt(
+        f,
+        Rustcore.GetSetting("durHUDBackgroundOpacity") or HUD_BG_ALPHA,
+        Rustcore.GetSetting("durHUDBackgroundShadow") or HUD_BG_ALPHA,
+        HUD_BG_BORDER,
+        -- The row is short and very wide, so a single stretched edge strip
+        -- smears its rivets into streaks; tiling keeps them at their real size.
+        true)
+    f.backgroundPieces = panelArt.pieces
+    f.backgroundShadowPieces = panelArt.shadowPieces
+    f.shade = panelArt.shade
+
     hudContainer = f
+    ApplyBackgroundVisibility()
     ApplyHUDPosition()
 
     -- Right-side action bars (MultiBarLeft/MultiBarRight) share screen space
@@ -821,56 +949,107 @@ local function UpdateHUD()
     end
 
     if #activeOrder > 0 then
-        local totalH = #activeOrder * FRAME_H + (#activeOrder - 1) * SLOT_GAP
-        hudContainer:SetHeight(totalH)
+        -- Vertical stacks a column; horizontal lays out a single row. Either
+        -- way the container is pinned by one corner and grows away from it, so
+        -- the pinned edge stays put and only the free edges move.
+        local horizontal = Rustcore.GetSetting("durHUDHorizontal")
+        local padL, padR, padY = BackgroundPadding()
+        if horizontal then
+            hudContainer:SetSize(
+                #activeOrder * FRAME_W + (#activeOrder - 1) * H_SLOT_GAP + padL + padR,
+                FRAME_H + padY * 2)
+        else
+            hudContainer:SetSize(
+                FRAME_W + padL + padR,
+                #activeOrder * FRAME_H + (#activeOrder - 1) * SLOT_GAP + padY * 2)
+        end
         -- No repositioning here: the container keeps a single anchor point
-        -- (SetPoint(corner, ...)), and SetHeight only moves the unanchored
-        -- edge, so the anchor itself never drifts on its own. Re-running the
+        -- (SetPoint(corner, ...)), and resizing only moves the unanchored
+        -- edges, so the anchor itself never drifts on its own. Re-running the
         -- clamp/corner-conversion math on every tick was the actual source of
-        -- the "HUD jumps on equip" bugs — position is now only touched on
-        -- manual drag (StopHUDDrag) or when the grow-upward setting itself
-        -- changes (RefreshPosition), matching how this worked before that
-        -- setting was added.
+        -- the "HUD jumps on equip" bugs. Position is now only touched on a
+        -- manual drag (StopHUDDrag), or when a setting that changes which edge
+        -- is pinned changes (RefreshPosition, HandleHorizontalChanged).
         local growUpward = Rustcore.GetSetting("durHUDGrowUpward")
         local reverseOrder = Rustcore.GetSetting("durHUDReverseOrder")
-        local yOff = 0
-        -- activeOrder is always sorted worst-first regardless of anchor mode.
-        -- Grow-down anchors the top edge, so worst-first order is walked
-        -- forward (worst lands at the fixed top). Grow-up anchors the bottom
-        -- edge instead, so the same array is walked in reverse (best lands
-        -- at the fixed bottom) — this keeps the worst item at the visual top
-        -- in both modes and makes toggling the setting a no-op for on-screen
-        -- pixels, since it's just reinterpreting the same ranks from the
-        -- other end. durHUDReverseOrder flips which end the walk starts
-        -- from (XOR'd against growUpward) so the worst item lands at the
-        -- visual bottom instead, independent of which edge is anchored.
-        local walkReversed = growUpward
-        if reverseOrder then walkReversed = not walkReversed end
-        local first, last, step = 1, #activeOrder, 1
-        if walkReversed then
-            first, last, step = #activeOrder, 1, -1
-        end
-        -- Every frame overlaps the one below it by SLOT_GAP, which hides the
-        -- transparent sliver at the bottom of the frame art. The bottom-most
-        -- frame has nothing under it to do that hiding, so its own bottom edge
-        -- shows and reads as a one-pixel seam against the row above. Pulling
-        -- just that frame up by a pixel closes it without disturbing the rest of
-        -- the stack, which already sits flush.
-        --
-        -- Which iteration is visually lowest depends on the anchor: growing
-        -- upward pins the bottom edge, so the first frame placed is the lowest;
-        -- growing downward pins the top, so the last one is.
-        local bottomIteration = growUpward and first or last
-        for i = first, last, step do
-            local sf = frameBySlot[activeOrder[i]]
-            local nudge = (i == bottomIteration) and 1 or 0
-            sf:ClearAllPoints()
-            if growUpward then
-                sf:SetPoint("BOTTOMLEFT", hudContainer, "BOTTOMLEFT", 0, -yOff + nudge)
-            else
-                sf:SetPoint("TOPLEFT", hudContainer, "TOPLEFT", 0, yOff + nudge)
+
+        if horizontal then
+            -- One row. The container is pinned by whichever side Grow Upward
+            -- selected (see GetHUDAnchorCorner), and the frames are laid out
+            -- from that same side, so the fixed end is the one that keeps its
+            -- pixels as items come and go.
+            --
+            -- activeOrder is worst-first, so walking it forward from the
+            -- pinned side would park the worst item at the right end in one
+            -- mode and the left in the other. Reversing the walk when growing
+            -- right cancels that out -- exactly as the vertical stack reverses
+            -- when growing upward. The worst item then sits at the visual
+            -- right either way, which makes toggling the setting a no-op for
+            -- the pixels already on screen; all it changes is which end moves
+            -- next. durHUDReverseOrder flips that to the visual left.
+            local growRight = growUpward
+            local walkReversed = growRight
+            if reverseOrder then walkReversed = not walkReversed end
+            local first, last, step = 1, #activeOrder, 1
+            if walkReversed then
+                first, last, step = #activeOrder, 1, -1
             end
-            yOff = yOff - FRAME_H - SLOT_GAP
+            -- H_SLOT_GAP's overlap trims cosmetic side padding; it is not
+            -- the seam nudge SLOT_GAP does, which hides a sliver along the
+            -- frame art's bottom edge that nothing here stacks over anything.
+            local xOff = 0
+            for i = first, last, step do
+                local sf = frameBySlot[activeOrder[i]]
+                sf:ClearAllPoints()
+                if growRight then
+                    sf:SetPoint("TOPLEFT", hudContainer, "TOPLEFT", -xOff + padL, -padY)
+                else
+                    sf:SetPoint("TOPRIGHT", hudContainer, "TOPRIGHT", xOff - padR, -padY)
+                end
+                xOff = xOff - FRAME_W - H_SLOT_GAP
+            end
+        else
+            local yOff = 0
+            -- activeOrder is always sorted worst-first regardless of anchor
+            -- mode. Grow-down anchors the top edge, so worst-first order is
+            -- walked forward (worst lands at the fixed top). Grow-up anchors
+            -- the bottom edge instead, so the same array is walked in reverse
+            -- (best lands at the fixed bottom). That keeps the worst item at
+            -- the visual top in both modes, and makes toggling the setting a
+            -- no-op for on-screen pixels since it is only reinterpreting the
+            -- same ranks from the other end. durHUDReverseOrder flips which
+            -- end the walk starts from (XOR'd against growUpward) so the worst
+            -- item lands at the visual bottom instead, independent of which
+            -- edge is anchored.
+            local walkReversed = growUpward
+            if reverseOrder then walkReversed = not walkReversed end
+            local first, last, step = 1, #activeOrder, 1
+            if walkReversed then
+                first, last, step = #activeOrder, 1, -1
+            end
+            -- Every frame overlaps the one below it by SLOT_GAP, which hides
+            -- the transparent sliver at the bottom of the frame art. The
+            -- bottom-most frame has nothing under it to do that hiding, so its
+            -- own bottom edge shows and reads as a one-pixel seam against the
+            -- row above. Pulling just that frame up by a pixel closes it
+            -- without disturbing the rest of the stack, which already sits
+            -- flush.
+            --
+            -- Which iteration is visually lowest depends on the anchor:
+            -- growing upward pins the bottom edge, so the first frame placed
+            -- is the lowest; growing downward pins the top, so the last is.
+            local bottomIteration = growUpward and first or last
+            for i = first, last, step do
+                local sf = frameBySlot[activeOrder[i]]
+                local nudge = (i == bottomIteration) and 1 or 0
+                sf:ClearAllPoints()
+                if growUpward then
+                    sf:SetPoint("BOTTOMLEFT", hudContainer, "BOTTOMLEFT", padL, -yOff + nudge + padY)
+                else
+                    sf:SetPoint("TOPLEFT", hudContainer, "TOPLEFT", padL, yOff + nudge - padY)
+                end
+                yOff = yOff - FRAME_H - SLOT_GAP
+            end
         end
         hudContainer:Show()
         if DurabilityFrame then DurabilityFrame:Hide() end
@@ -947,9 +1126,48 @@ function RustcoreDurability.HandleGrowUpwardChanged()
     UpdateHUD()
 end
 
--- Reverse order only flips which end of the stable stack the walk starts
--- from (see UpdateHUD); the anchor corner is untouched, so a plain re-layout
--- is enough.
+-- Reverse order only flips which end the stable walk starts from (see
+-- UpdateHUD); the anchor corner is untouched in either layout, so a plain
+-- re-layout is enough.
 function RustcoreDurability.HandleReverseOrderChanged()
     UpdateHUD()
 end
+
+-- Switching between a column and a row changes the container's width by up to
+-- an order of magnitude, and the frames inside are anchored to edges that swap
+-- roles. Lay the new shape out first, then re-pin and re-clamp from the live
+-- rect so the HUD keeps the on-screen spot it had instead of being measured
+-- against the shape it no longer has.
+function RustcoreDurability.HandleHorizontalChanged()
+    UpdateHUD()
+    RepositionForAnchorChange()
+end
+
+-- Turning the background on or off changes the padding, and so the container's
+-- size, which is why this lays out before it re-pins -- the same ordering, and
+-- for the same reason, as HandleHorizontalChanged.
+function RustcoreDurability.HandleBackgroundChanged()
+    ApplyBackgroundVisibility()
+    UpdateHUD()
+    RepositionForAnchorChange()
+end
+
+function RustcoreDurability.RefreshBackgroundOpacity()
+    if not hudContainer then return end
+    local opacity = Rustcore.GetSetting("durHUDBackgroundOpacity") or HUD_BG_ALPHA
+    for _, piece in pairs(hudContainer.backgroundPieces or {}) do
+        piece:SetAlpha(opacity)
+    end
+    if hudContainer.shade then
+        hudContainer.shade:SetVertexColor(0, 0, 0, 0.10 * opacity)
+    end
+end
+
+function RustcoreDurability.RefreshBackgroundShadow()
+    if not hudContainer then return end
+    local opacity = Rustcore.GetSetting("durHUDBackgroundShadow") or HUD_BG_ALPHA
+    for _, piece in pairs(hudContainer.backgroundShadowPieces or {}) do
+        piece:SetAlpha(opacity)
+    end
+end
+
