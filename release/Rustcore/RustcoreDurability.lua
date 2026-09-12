@@ -51,6 +51,26 @@ local function BackgroundPadding()
     return HUD_BG_PAD_LEFT, HUD_BG_PAD_RIGHT, HUD_BG_PAD_VERT
 end
 
+-- Optional "Durability" heading across the top of the panel. Styled to match
+-- the stats window's row headings, because a player running both should read
+-- them as the same UI rather than two addons that happen to sit side by side.
+--
+-- One heading for the whole panel, not one per counter: every row here counts
+-- the same thing about a different slot, and the item icon already says which
+-- slot. The stats window is the opposite case and labels each row.
+local HUD_TITLE_TEXT     = "Durability"
+local HUD_TITLE_FONT_SIZE = 11
+local HUD_TITLE_BAND_H   = 14
+local HUD_TITLE_COLOR    = { 1, 0.82, 0 }
+-- Two pixels rather than the one the counter digits use. The digits sit on the
+-- counter graphic, which is dark already; the heading sits over whatever the
+-- player has behind the HUD, which may be anything.
+local HUD_TITLE_SHADOW   = 2
+
+local function TitleBand()
+    return Rustcore.GetSetting("durHUDShowTitle") and HUD_TITLE_BAND_H or 0
+end
+
 -- Counter frame overlay art is 1890x558 (native); stretched to FRAME_W at full
 -- height it squashes the icon cutout into a tall rectangle, so the overlay is
 -- sized to this shorter height (and vertically centered) to keep the cutout square.
@@ -750,6 +770,20 @@ local function BuildHUD()
     f.backgroundShadowPieces = panelArt.shadowPieces
     f.shade = panelArt.shade
 
+    -- Pinned to the container's top edge, which is the one edge that stays put
+    -- whichever way the stack grows: UpdateHUD reserves the band for it there
+    -- in both anchor modes, so the heading never lands on top of a counter.
+    local title = f:CreateFontString(nil, "OVERLAY")
+    title:SetFont(BODY_FONT_PATH, HUD_TITLE_FONT_SIZE, "")
+    title:SetShadowColor(0, 0, 0, 1)
+    title:SetShadowOffset(HUD_TITLE_SHADOW, -HUD_TITLE_SHADOW)
+    title:SetJustifyH("CENTER")
+    title:SetWordWrap(false)
+    title:SetTextColor(HUD_TITLE_COLOR[1], HUD_TITLE_COLOR[2], HUD_TITLE_COLOR[3])
+    title:SetText(HUD_TITLE_TEXT)
+    title:Hide()
+    f.title = title
+
     hudContainer = f
     ApplyBackgroundVisibility()
     ApplyHUDPosition()
@@ -954,14 +988,24 @@ local function UpdateHUD()
         -- the pinned edge stays put and only the free edges move.
         local horizontal = Rustcore.GetSetting("durHUDHorizontal")
         local padL, padR, padY = BackgroundPadding()
+        -- Extra height at the top for the heading. Added to the container
+        -- rather than to each counter, so the stack itself is untouched and
+        -- only the panel around it grows.
+        local band = TitleBand()
         if horizontal then
             hudContainer:SetSize(
                 #activeOrder * FRAME_W + (#activeOrder - 1) * H_SLOT_GAP + padL + padR,
-                FRAME_H + padY * 2)
+                FRAME_H + padY * 2 + band)
         else
             hudContainer:SetSize(
                 FRAME_W + padL + padR,
-                #activeOrder * FRAME_H + (#activeOrder - 1) * SLOT_GAP + padY * 2)
+                #activeOrder * FRAME_H + (#activeOrder - 1) * SLOT_GAP + padY * 2 + band)
+        end
+
+        if hudContainer.title then
+            hudContainer.title:ClearAllPoints()
+            hudContainer.title:SetPoint("TOP", hudContainer, "TOP", 0, -padY - 1)
+            hudContainer.title:SetShown(band > 0)
         end
         -- No repositioning here: the container keeps a single anchor point
         -- (SetPoint(corner, ...)), and resizing only moves the unanchored
@@ -1001,10 +1045,12 @@ local function UpdateHUD()
             for i = first, last, step do
                 local sf = frameBySlot[activeOrder[i]]
                 sf:ClearAllPoints()
+                -- Both anchors here are on the top edge, which is where the
+                -- heading's band was reserved, so both clear it by `band`.
                 if growRight then
-                    sf:SetPoint("TOPLEFT", hudContainer, "TOPLEFT", -xOff + padL, -padY)
+                    sf:SetPoint("TOPLEFT", hudContainer, "TOPLEFT", -xOff + padL, -padY - band)
                 else
-                    sf:SetPoint("TOPRIGHT", hudContainer, "TOPRIGHT", xOff - padR, -padY)
+                    sf:SetPoint("TOPRIGHT", hudContainer, "TOPRIGHT", xOff - padR, -padY - band)
                 end
                 xOff = xOff - FRAME_W - H_SLOT_GAP
             end
@@ -1043,10 +1089,14 @@ local function UpdateHUD()
                 local sf = frameBySlot[activeOrder[i]]
                 local nudge = (i == bottomIteration) and 1 or 0
                 sf:ClearAllPoints()
+                -- Growing upward pins the bottom edge, and the heading's band
+                -- was added at the top, so the stack clears it for free. Growing
+                -- downward pins the top edge, which is the band itself, so that
+                -- case has to step past it.
                 if growUpward then
                     sf:SetPoint("BOTTOMLEFT", hudContainer, "BOTTOMLEFT", padL, -yOff + nudge + padY)
                 else
-                    sf:SetPoint("TOPLEFT", hudContainer, "TOPLEFT", padL, yOff + nudge - padY)
+                    sf:SetPoint("TOPLEFT", hudContainer, "TOPLEFT", padL, yOff + nudge - padY - band)
                 end
                 yOff = yOff - FRAME_H - SLOT_GAP
             end
@@ -1148,6 +1198,13 @@ end
 -- for the same reason, as HandleHorizontalChanged.
 function RustcoreDurability.HandleBackgroundChanged()
     ApplyBackgroundVisibility()
+    UpdateHUD()
+    RepositionForAnchorChange()
+end
+
+-- Same shape as HandleBackgroundChanged: the heading changes the container's
+-- height, so it lays out before it re-pins.
+function RustcoreDurability.HandleTitleChanged()
     UpdateHUD()
     RepositionForAnchorChange()
 end

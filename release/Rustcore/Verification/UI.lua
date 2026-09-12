@@ -94,7 +94,9 @@ local REASON_TEXT = {
     { "played time decreased",
       "Your played time went backwards, which playing cannot cause." },
     { "integrity",
-      "Rustcore's saved record no longer matched its own checksum." },
+      "Rustcore's saved record did not match its own checksum. This pauses "
+      .. "certification rather than ending the run, and it lifts itself after "
+      .. "a clean stretch of play." },
     { "identity mismatch",
       "This record was made on a different character." },
     { "repair performed",

@@ -64,7 +64,7 @@ Rustcore.DIFFICULTY_COLORS = {
 -- brightness, to roughly where the durability readout sits -- that one uses
 -- near-primary colours at 0.85 saturation, and stays legible at a glance.
 Rustcore.DIFFICULTY_COLORS_VIVID = {
-    [1] = { 0.51, 0.92, 0.14 }, -- Rusted
+    [1] = { 0.52, 0.78, 0.31 }, -- Rusted
     [2] = { 0.94, 0.85, 0.14 }, -- Broken
     [3] = { 0.97, 0.50, 0.12 }, -- Shattered
     [4] = { 0.95, 0.25, 0.14 }, -- Crumbling
@@ -95,10 +95,18 @@ local defaults = {
     durHUDBackground = false,   -- draw the rivet panel behind the durability counters
     durHUDBackgroundOpacity = 0.78, -- opacity of the durability HUD background art
     durHUDBackgroundShadow = 0.78,  -- opacity of the solid black plane behind that art
+    -- One "Durability" heading across the top of the HUD. Deliberately not one
+    -- per counter, unlike the stats window: every row here counts the same
+    -- thing, so a label on each would repeat itself eleven times over.
+    durHUDShowTitle = false,
     statsBackground = true,        -- draw the rivet panel behind the stats window
     statsBackgroundOpacity = 0.78, -- opacity of the stats window background art
     statsBackgroundShadow = 0.78, -- opacity of the solid black plane behind the background art
-    statsHorizontalLayout = false, -- arrange all stats window elements on a single row
+    -- Stats rows stack into a single column by default; this lays them out in
+    -- one row instead. There used to be a third, two-row arrangement with text
+    -- labels, but the rows carry their own icons now and a column of them is
+    -- the shape that reads best, so it is simply the default.
+    statsHorizontalLayout = false, -- one row: every counter side by side
     -- Which counters the stats window shows. Broken, Rusted and the best item
     -- lost are the original three and stay on; deaths is new and stays off until
     -- asked for, so an existing window does not change shape on update.
@@ -107,6 +115,13 @@ local defaults = {
     statShowDeaths  = false, -- show the Deaths counter
     statShowBestItem = true, -- show the best item lost panel
     statsColoredNumbers = true, -- tint each stats counter with its matching difficulty colour
+    -- A heading above each stats row. One per counter here, because each row
+    -- counts something different and the icon alone is the only thing saying
+    -- which is which.
+    statsShowTitles = false,
+    -- Item icons beside each stats counter. Off falls back to the standalone
+    -- counter graphic the window used before the icons arrived.
+    statsShowIcons = true,
     dragonPlayerFrame = true, -- show a difficulty-tier dragon overlay on your own player frame
     dragonTargetFrame = true,  -- show a difficulty-tier dragon overlay on the target frame when targeting a Rustcore user
     showDeathlogWindow = false, -- show the death log window listing other players' deaths
@@ -383,6 +398,7 @@ function Rustcore.SetSetting(key, value)
         return false
     end
     EnsureProfile()[key] = value
+
     if key == "selfFound" then
         if value then
             MarkSelfFoundEnabled()
@@ -442,12 +458,14 @@ function Rustcore.SetSetting(key, value)
     elseif key == "statsColoredNumbers" and RustcoreStats and RustcoreStats.Refresh then
         -- Colour only: the digits are re-tinted in place, nothing moves.
         RustcoreStats.Refresh()
-    elseif (key == "statsHorizontalLayout"
+    elseif (key == "statsHorizontalLayout" or key == "statsShowTitles"
+            or key == "statsShowIcons"
             or key == "statShowRusted" or key == "statShowBroken"
             or key == "statShowDeaths" or key == "statShowBestItem")
             and RustcoreStats then
-        -- Turning a counter on or off changes how many cells the row has, so
-        -- the window has to be re-measured, not just repainted.
+        -- Turning a counter, its heading or the icons on or off changes how
+        -- much room the rows need -- the two row shapes are different widths --
+        -- so the window has to be re-measured, not just repainted.
         if RustcoreStats.ApplyLayoutModeChange then
             RustcoreStats.ApplyLayoutModeChange()
         elseif RustcoreStats.RefreshLayout then
@@ -469,6 +487,10 @@ function Rustcore.SetSetting(key, value)
         elseif RustcoreDurability.RefreshPosition then
             RustcoreDurability.RefreshPosition()
         end
+    elseif key == "durHUDShowTitle" and RustcoreDurability and RustcoreDurability.HandleTitleChanged then
+        -- The heading takes a band off the top of the panel, so the container
+        -- has to be re-measured and the counters re-placed under it.
+        RustcoreDurability.HandleTitleChanged()
     elseif key == "durHUDBackground" and RustcoreDurability then
         if RustcoreDurability.HandleBackgroundChanged then
             RustcoreDurability.HandleBackgroundChanged()

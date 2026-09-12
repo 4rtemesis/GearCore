@@ -29,9 +29,11 @@ local strbyte, gsub, tostring, type = string.byte, string.gsub, tostring, type
 local MOD_A, MUL_A = 33554393, 8191    -- largest prime below 2^25, 2^13-1
 local MOD_B, MUL_B = 67108859, 131071  -- largest prime below 2^26, 2^17-1
 
--- Bumped whenever the sealed field list changes, so an addon update that seals
--- different fields invalidates old seals instead of accusing the player.
-I.SEAL_VERSION = 10
+-- A coarse "this build seals differently" marker. No longer the mechanism that
+-- protects players from update-time false positives -- SealFingerprint below
+-- does that, and it cannot be forgotten the way a manual bump can. Kept because
+-- it costs nothing and makes a deliberate break explicit.
+I.SEAL_VERSION = 11
 
 -- How many chain events are retained. Older entries roll off; the head still
 -- carries their contribution.
@@ -90,6 +92,20 @@ function I.Canonical(payload)
         parts[index] = Escape(key) .. "=" .. EncodeValue(payload[key])
     end
     return concat(parts, ";")
+end
+
+-- Sealed to whole seconds.
+--
+-- The playtime counters are floats accumulated from GetTime() deltas, and a
+-- seal is only as stable as the least stable thing in it: whatever precision
+-- SavedVariables keeps on the way to disk has to come back bit-identical, or
+-- the record fails its own check having done nothing wrong. Sub-second
+-- resolution is worth nothing to a tamper seal, so it is rounded away and the
+-- question stops being asked.
+local function Seconds(value)
+    local number = tonumber(value)
+    if not number then return "" end
+    return floor(number + 0.5)
 end
 
 local function GetChain(record)
@@ -152,9 +168,13 @@ local function EconomyDigest(record)
     -- pair: the cross-session check measures the gap as (current /played minus
     -- lastPlayed), so moving it forward by hand shrinks the gap to nothing and
     -- the gold that arrived during it stops being examined.
+    -- Rounded for the same reason the playtime counters are: these come back
+    -- through SavedVariables, and the seal has to render them identically on
+    -- the other side. Copper and seconds are both whole-number quantities
+    -- anyway, so nothing real is lost.
     return format("%s:%s:%s:%s:%s",
-        tostring(money.last or ""), tostring(money.lastPlayed or ""),
-        tostring(money.unexplained or 0),
+        tostring(Seconds(money.last)), tostring(Seconds(money.lastPlayed)),
+        tostring(Seconds(money.unexplained)),
         tostring(money.anomalies or 0), tostring(items.anomalies or 0))
 end
 
@@ -223,7 +243,7 @@ local function CriticalState(record)
         sClaimLevel = selfFound.qualifyFromLevel or selfFound.claimedAtLevel or "",
         sLapsed     = selfFound.claimLapsed and 1 or 0,
         sSusp       = selfFound.suspended and 1 or 0,
-        sRestore    = selfFound.restoreAtTracked or "",
+        sRestore    = Seconds(selfFound.restoreAtTracked),
         -- Phase 5. A Self-Found failure is permanent and its cause is the
         -- reason the buff is gone, so both are sealed against a quiet edit.
         sViol       = selfFound.violations or 0,
@@ -233,10 +253,10 @@ local function CriticalState(record)
         economy     = EconomyDigest(record),
         dPending    = difficulty.pendingCapTier or "",
         dFloor      = difficulty.deathFloorTier or "",
-        anchor      = timeState.anchorPlayed or "",
-        lastPlayed  = timeState.lastServerPlayed or "",
-        tracked     = timeState.trackedSinceAnchor or "",
-        untracked   = timeState.untrackedSeconds or "",
+        anchor      = Seconds(timeState.anchorPlayed),
+        lastPlayed  = Seconds(timeState.lastServerPlayed),
+        tracked     = Seconds(timeState.trackedSinceAnchor),
+        untracked   = Seconds(timeState.untrackedSeconds),
         sequence    = chain.sequence or "",
         durability  = DurabilityDigest(record),
         deathLoss   = DeathLossDigest(record),
@@ -252,17 +272,58 @@ end
 -- someone who did nothing, and relying on remembering a manual bump had already
 -- failed more than once.
 --
--- Folding the field names into the seal removes the failure mode entirely: any
--- change to the sealed shape invalidates old seals automatically, and an
--- invalidated seal is skipped rather than treated as evidence.
+-- Folding the sealed shape into the seal removes the failure mode entirely: any
+-- change to it invalidates old seals automatically, and an invalidated seal is
+-- skipped rather than treated as evidence.
+--
+-- The fingerprint is taken over the *rendering* of a fixed synthetic record, not
+-- over the list of key names. Key names were the first attempt and they were not
+-- enough: the digests above each collapse a whole sub-table into one key, so
+-- adding a field to DurabilityDigest or EconomyDigest changed what the seal
+-- covered while leaving the key list identical. An update that did that produced
+-- exactly the accusation this mechanism exists to prevent -- the player's record
+-- had not changed, only Rustcore's idea of how to render it.
+--
+-- Running a fixed record through the real CriticalState catches all of it: a new
+-- key, a dropped key, a changed separator, a field added to a digest, a format
+-- string edited. If the output moves for any reason, so does the fingerprint.
+local FINGERPRINT_RECORD = {
+    schemaVersion = 1,
+    origin = "fp",
+    identity = { guid = "fp-guid" },
+    difficulty = {
+        evidenceStatus = 1, highestVerifiedTier = 2, permanentCapTier = 3,
+        startedAtLevel = 4, pendingCapTier = 5, deathFloorTier = 6,
+        warnings = { alpha = 1, beta = 2 },
+    },
+    selfFound = {
+        evidenceStatus = 2, startedAtLevel = 7, claimed = true,
+        qualifyFromLevel = 8, claimedAtLevel = 9, claimLapsed = true,
+        suspended = true, restoreAtTracked = 10, violations = 11,
+        lastViolation = "fp-violation", warnings = { gamma = 3 },
+    },
+    time = {
+        anchorPlayed = 12, lastServerPlayed = 13,
+        trackedSinceAnchor = 14, untrackedSeconds = 15,
+    },
+    chain = { sequence = 16 },
+    economy = {
+        money = { last = 17, lastPlayed = 18, unexplained = 19, anomalies = 20 },
+        items = { anomalies = 21 },
+    },
+    durabilityState = {
+        slots = { [1] = { id = 22, guid = "fp-item", cur = 23, max = 24 } },
+    },
+    deathLoss = {
+        pending = { ["25"] = { at = 26, count = 27, seen = 28, recorded = true } },
+    },
+}
+
 local sealFingerprint
 
 local function SealFingerprint()
     if not sealFingerprint then
-        local keys = {}
-        for key in pairs(CriticalState({})) do keys[#keys + 1] = key end
-        sort(keys)
-        sealFingerprint = I.Hash(concat(keys, ","))
+        sealFingerprint = I.Hash(I.Canonical(CriticalState(FINGERPRINT_RECORD)))
     end
     return sealFingerprint
 end
@@ -324,7 +385,11 @@ function I.Append(eventType, payload)
 end
 
 -- Recompute the retained window and the seal.
--- Returns true when everything reconciles, plus a reason string when it does not.
+--
+-- Returns true when everything reconciles, plus a reason string when it does
+-- not. A third return marks the case where there was nothing to judge, because
+-- the seal was written in a shape this build cannot reproduce -- callers use it
+-- to tell "checked and clean" apart from "not checkable".
 function I.Check(record)
     record = record or V.GetRecord()
     if not record then return true end
@@ -333,14 +398,14 @@ function I.Check(record)
     if not chain or not chain.seal then
         -- Nothing sealed yet (a record created by an older build). Not evidence
         -- of anything; the next Seal() call adopts it.
-        return true
+        return true, nil, true
     end
     if chain.sealVersion ~= I.SEAL_VERSION or chain.sealFields ~= SealFingerprint() then
         -- Sealed by a build that protected a different field list -- either
         -- because the version was bumped deliberately, or because the shape
         -- changed and the fingerprint noticed on its own. Either way there is
         -- nothing to compare against, so it is not treated as tampering.
-        return true
+        return true, nil, true
     end
 
     local events = chain.events or {}
@@ -380,6 +445,39 @@ function I.Genesis(record, originLabel)
     return chain.head
 end
 
+-- Drop an integrity verdict this build can no longer stand behind.
+--
+-- Reached when the seal was written in a shape that no longer reproduces --
+-- normally an addon update. The old verdict was a statement about a comparison
+-- that cannot be made any more, so keeping it would mean holding a player to an
+-- accusation nobody can now check. The record re-seals in the current shape and
+-- is held to the check normally from the next login on.
+function I.ReleaseStaleVerdict(record)
+    if not record then return false end
+
+    local released = false
+    for _, trackName in ipairs({ "difficulty", "selfFound" }) do
+        local track = record[trackName]
+        if track and track.integrityHold then
+            track.integrityHold = nil
+            track.statusReason = nil
+            -- Restore decides for itself whether the track is actually
+            -- suspended, so there is no second guess to get wrong here.
+            if V.Restore then
+                V.Restore(trackName, "integrity verdict no longer applies")
+            end
+            released = true
+        end
+    end
+
+    if record.tamperReason then
+        record.tamperReason = nil
+        record.tamperAt = nil
+        released = true
+    end
+    return released
+end
+
 function I.Init()
     if I.initialized then return end
     I.initialized = true
@@ -387,14 +485,42 @@ function I.Init()
     local record = V.GetRecord()
     if not record then return end
 
-    local ok, reason = I.Check(record)
+    local ok, reason, stale = I.Check(record)
+    if ok and stale then
+        -- Nothing to compare against. Clear anything a previous build concluded
+        -- from a comparison this one cannot repeat, then adopt the record.
+        if I.ReleaseStaleVerdict(record) then
+            print("|cffff4444Rustcore:|r Verification restored: the previous integrity "
+                .. "warning came from an older build's bookkeeping, not from your record.")
+        end
+        I.Seal(record)
+        return
+    end
     if not ok then
-        -- Bias toward reasonable doubt: a broken chain means Rustcore can no
-        -- longer vouch for the history, not that the player definitely cheated.
-        -- Both tracks drop to UNVERIFIED rather than FAILED.
+        -- Suspended, not ended.
+        --
+        -- A mismatch says Rustcore cannot vouch for the saved history. It does
+        -- not say the player edited anything -- twice now it has been Rustcore's
+        -- own bookkeeping -- and UNVERIFIED is terminal, so that verdict turned
+        -- an addon bug into a permanently dead run with no way back.
+        --
+        -- SUSPENDED costs the certification just the same, and it comes back
+        -- after a stretch of clean, observed play. Someone who really did edit
+        -- their SavedVariables gains nothing by it and waits out the same
+        -- half hour; someone Rustcore wronged recovers on their own.
         record.tamperReason = reason
-        V.SetStatus("difficulty", V.STATUS.UNVERIFIED, "integrity: " .. reason)
-        V.SetStatus("selfFound", V.STATUS.UNVERIFIED, "integrity: " .. reason)
+        record.tamperAt = time and time() or 0
+
+        local tracked = (record.time and record.time.trackedSinceAnchor) or 0
+        local required = tracked + (V.INTEGRITY_RESTORE_TRACKED or 1800)
+        for _, trackName in ipairs({ "difficulty", "selfFound" }) do
+            local track = record[trackName]
+            if track then
+                if V.SetStatus(trackName, V.STATUS.SUSPENDED, "integrity: " .. reason) then
+                    track.integrityHold = required
+                end
+            end
+        end
         I.Seal(record)
     end
 end

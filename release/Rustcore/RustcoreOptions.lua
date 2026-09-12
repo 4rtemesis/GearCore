@@ -46,12 +46,18 @@ end
 -- via ApplyDifficultyLabelStyle) while settings are locked, instead of showing
 -- a separate combat-lock note elsewhere on the panel. Sized up and outlined
 -- so it reads clearly in that larger title slot instead of looking muted.
+--
+-- Tinted from the vivid palette, not the earthy one the difficulty title uses.
+-- The earthy colours are chosen to sit back behind a large display face, which
+-- is the wrong job here -- at the Dust tier in particular the title colour is a
+-- near-black red, and a notice nobody can read is worse than no notice at all.
 local function ApplyCombatLockLabelStyle(slider, value)
     local label = slider and slider.GetName and _G[slider:GetName().."Text"]
     if not label then return end
 
     local v = math.max(1, math.min(5, math.floor((value or 1) + 0.5)))
-    local color = DIFF_COLORS[v] or DIFF_COLORS[1]
+    local palette = Rustcore.DIFFICULTY_COLORS_VIVID or DIFF_COLORS
+    local color = palette[v] or palette[1]
     label:SetWidth(340)
     label:SetText(COMBAT_NOTE_TEXT)
     label:SetFont(BODY_FONT_PATH, 24, "OUTLINE")
@@ -202,13 +208,16 @@ local DEPENDENT_TOGGLES = {
     { parentKey = "showStatsWindow",    field = "cbStatDeaths" },
     { parentKey = "showStatsWindow",    field = "cbStatBestItem" },
     { parentKey = "showStatsWindow",    field = "cbStatsColoredNumbers" },
+    { parentKey = "showStatsWindow",    field = "cbStatsTitles" },
+    { parentKey = "showStatsWindow",    field = "cbStatsIcons" },
     { parentKey = "showDurabilityHUD",  field = "cbDurShowAll" },
     { parentKey = "showDurabilityHUD",  field = "cbDurHorizontal" },
     { parentKey = "showDurabilityHUD",  field = "cbDurBackground" },
     { parentKey = "showDurabilityHUD",  field = "cbDurGrowUpward" },
     { parentKey = "showDurabilityHUD",  field = "cbDurReverseOrder" },
+    { parentKey = "showDurabilityHUD",  field = "cbDurTitle" },
     { parentKey = "showStatsWindow",    field = "cbStatsHorizontal" },
-    { parentKey = "showStatsWindow",   field = "cbStatsBackground" },
+    { parentKey = "showStatsWindow",    field = "cbStatsBackground" },
     { parentKey = "broadcastDeaths",    field = "cbGuildMessage" },
     { parentKey = "broadcastDeaths",    field = "cbRealmBroadcast" },
     { parentKey = "showDeathWarning",   field = "cbShowWarningSound" },
@@ -298,8 +307,11 @@ local function RefreshCombatLockState(frame)
         frame.cbDurShowAll,
         frame.cbDurGrowUpward,
         frame.cbDurReverseOrder,
+        frame.cbDurTitle,
         frame.cbStatsHorizontal,
         frame.cbStatsBackground,
+        frame.cbStatsTitles,
+        frame.cbStatsIcons,
         frame.cbStatRusted,
         frame.cbStatBroken,
         frame.cbStatDeaths,
@@ -652,7 +664,7 @@ local function BuildOptionsFrame()
     profileDesc:SetPoint("TOPLEFT", profileHeader, "BOTTOMLEFT", 0, -6)
     profileDesc:SetWidth(360)
     profileDesc:SetJustifyH("LEFT")
-    profileDesc:SetText("Import settings from another character.")
+    profileDesc:SetText("Import settings from another character, or delete a character's stored data.")
     ApplyBodyFont(profileDesc, 14)
 
     -- Interface
@@ -697,20 +709,35 @@ local function BuildOptionsFrame()
         "Reverses the durability HUD stack order, placing the most damaged item at the bottom instead of the top. In Horizontal Display it moves the most damaged item to the far end of the row instead.",
         cbDurGrowUpward, -3, "durHUDReverseOrder", 0, 20, 14)
 
+    local cbDurTitle = MakeCheckbox(interfaceContent,
+        "Panel Title",
+        "Puts a \"Durability\" heading across the top of the durability HUD. One heading for the whole panel, not one per counter.",
+        cbDurReverseOrder, -3, "durHUDShowTitle", 0, 20, 14)
+
     local cbStats = MakeCheckbox(interfaceContent,
         "Show Stats Window",
         "Show or hide the Rustcore item loss stats window.",
-        cbDurReverseOrder, -7, "showStatsWindow", -34)
+        cbDurTitle, -7, "showStatsWindow", -34)
 
     local cbStatsHorizontal = MakeCheckbox(interfaceContent,
         "Horizontal Display",
-        "Arranges all stats window elements in a single row instead of two.",
+        "Lays the stats counters out side by side in a single row instead of stacking them into a column.",
         cbStats, -3, "statsHorizontalLayout", 234, 20, 14)
 
     local cbStatsBackground = MakeCheckbox(interfaceContent,
         "Panel Background",
         "Draws the rivet panel behind the stats window. Turning it off also drops the extra margin that was reserved for the panel border, letting the window pull its content in tighter.",
         cbStatsHorizontal, -3, "statsBackground", 0, 20, 14)
+
+    local cbStatsTitles = MakeCheckbox(interfaceContent,
+        "Counter Titles",
+        "Puts a heading above each stats counter naming what it counts. One per counter, since every row counts something different.",
+        cbStatsBackground, -3, "statsShowTitles", 0, 20, 14)
+
+    local cbStatsIcons = MakeCheckbox(interfaceContent,
+        "Counter Icons",
+        "Shows an icon beside each stats counter. Turning it off falls back to the plain counter graphic the window used before the icons, with the same numbers in it.",
+        cbStatsTitles, -3, "statsShowIcons", 0, 20, 14)
 
     local cbStatRusted = MakeCheckbox(interfaceContent,
         "Rusted Counter",
@@ -1066,6 +1093,153 @@ local function BuildOptionsFrame()
         PlaySoundFile(Rustcore.GetAssetPath("Audio/ticksound2.wav"), "Master")
     end)
 
+    -- ── Deleting a character's stored data ───────────────────────────────────
+    --
+    -- Every table a character writes into, not just profiles. Leaving three of
+    -- the four behind is precisely how a deleted character's history came back
+    -- to haunt the next character to reuse the name: the profile was gone, but
+    -- the stats and the verification record were still sitting under the shared
+    -- name key, and were read as evidence of a past life.
+    local PROFILE_TABLES = {
+        "profiles", "characterStats", "selfFoundCharacters", "verification",
+    }
+
+    -- Every key the selected character could be filed under, minus every key
+    -- that might be ours.
+    --
+    -- The label scan is the same trick V.CandidateKeys uses, for the same
+    -- reason: a character keyed by GUID in one table and by name-realm in
+    -- another is still one character, and deleting half of it would leave
+    -- exactly the orphaned fragments this button exists to clear out.
+    --
+    -- The protection pass at the end is not paranoia. A deleted character and a
+    -- freshly made one with the same name share a characterLabel, which is the
+    -- single most likely reason anybody opens this menu -- so the sweep that
+    -- finds the old data will reach the live character too unless it is stopped.
+    -- Only the direct keys are protected, not V.CandidateKeys, because that
+    -- function's own label scan would hand back the foreign key as well and
+    -- quietly turn the whole thing into a no-op.
+    local function KeysForProfile(key)
+        local keys, seen = { key }, { [key] = true }
+
+        local function add(k)
+            if k and k ~= "" and not seen[k] then
+                seen[k] = true
+                keys[#keys + 1] = k
+            end
+        end
+
+        local profiles = type(RustcoreDB) == "table" and RustcoreDB.profiles or nil
+        local entry = type(profiles) == "table" and profiles[key] or nil
+        local label = type(entry) == "table" and entry.characterLabel or nil
+
+        if label then
+            if type(profiles) == "table" then
+                for k, profile in pairs(profiles) do
+                    if type(profile) == "table" and profile.characterLabel == label then
+                        add(k)
+                    end
+                end
+            end
+
+            -- A verification record can be keyed by a GUID that never reached
+            -- the profile table, so it has to be matched on what it knows about
+            -- itself rather than on where it happens to be filed.
+            local store = type(RustcoreDB) == "table" and RustcoreDB.verification or nil
+            if type(store) == "table" then
+                for k, record in pairs(store) do
+                    local id = type(record) == "table" and record.identity or nil
+                    if type(id) == "table" and id.name and id.realm
+                        and (id.name .. "-" .. id.realm) == label then
+                        add(k)
+                    end
+                end
+            end
+        end
+
+        local mine = {}
+        local function protect(k)
+            if k and k ~= "" then mine[k] = true end
+        end
+        protect(Rustcore.GetCharacterKey and Rustcore.GetCharacterKey())
+        protect(UnitGUID and UnitGUID("player"))
+        local name = UnitName and UnitName("player")
+        local realm = GetNormalizedRealmName and GetNormalizedRealmName()
+        if not realm or realm == "" then
+            realm = GetRealmName and GetRealmName() or nil
+        end
+        if name and realm and realm ~= "" then protect(name .. "-" .. realm) end
+        protect(name)
+
+        local out = {}
+        for _, k in ipairs(keys) do
+            if not mine[k] then out[#out + 1] = k end
+        end
+        return out
+    end
+
+    local function DeleteProfile(key)
+        if type(RustcoreDB) ~= "table" then return end
+        for _, k in ipairs(KeysForProfile(key)) do
+            for _, tableName in ipairs(PROFILE_TABLES) do
+                local t = RustcoreDB[tableName]
+                if type(t) == "table" then t[k] = nil end
+            end
+        end
+    end
+
+    -- Blizzard's own confirmation, because this is the one action in the addon
+    -- that destroys something the player cannot get back, and a dialog they
+    -- already recognise from deleting a character or an item says that faster
+    -- than anything custom could.
+    StaticPopupDialogs["RUSTCORE_DELETE_PROFILE"] = {
+        text = "Delete all Rustcore data for %s?\n\nSettings, statistics and verification history for that character will be removed. This cannot be undone.",
+        button1 = YES,
+        button2 = NO,
+        showAlert = true,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        -- Past the dialogs Blizzard's own protected code reuses, so ours cannot
+        -- taint one of them.
+        preferredIndex = 3,
+        OnAccept = function(self, data)
+            local key = data or self.data
+            if not key then return end
+            DeleteProfile(key)
+            if selectedProfileKey == key then selectedProfileKey = nil end
+            RefreshImportDropdownText()
+            PlaySoundFile(Rustcore.GetAssetPath("Audio/ticksound2.wav"), "Master")
+        end,
+    }
+
+    local deleteBtn = CreateFrame("Button", nil, gameplayPage, "UIPanelButtonTemplate")
+    deleteBtn:SetSize(82, 22)
+    deleteBtn:SetPoint("LEFT", importBtn, "RIGHT", 8, 0)
+    deleteBtn:SetText("Delete")
+    RustcoreTheme.SkinButton(deleteBtn)
+    ApplyBodyFont(deleteBtn:GetFontString(), 14)
+
+    deleteBtn:SetScript("OnClick", function()
+        if not selectedProfileKey then return end
+        if SettingsLocked() then
+            print("|cffff4444Rustcore:|r Settings cannot be changed while in combat.")
+            return
+        end
+
+        -- The label rather than the key, because the key is a GUID as often as
+        -- not and nobody can confirm a deletion they cannot read.
+        local profiles = RustcoreDB.profiles or {}
+        local source = profiles[selectedProfileKey]
+        local label = (type(source) == "table" and source.characterLabel)
+            or selectedProfileKey
+
+        local dialog = StaticPopup_Show("RUSTCORE_DELETE_PROFILE", label)
+        -- Captured now, so a dropdown change while the dialog is open cannot
+        -- redirect the deletion at somebody else.
+        if dialog then dialog.data = selectedProfileKey end
+    end)
+
     RefreshImportDropdownText()
 
     -- Verification tab. Built by Verification/UI.lua, which owns everything
@@ -1193,8 +1367,11 @@ local function BuildOptionsFrame()
     f.cbDurShowAll  = cbDurShowAll
     f.cbDurGrowUpward = cbDurGrowUpward
     f.cbDurReverseOrder = cbDurReverseOrder
+    f.cbDurTitle = cbDurTitle
     f.cbStatsHorizontal = cbStatsHorizontal
     f.cbStatsBackground = cbStatsBackground
+    f.cbStatsTitles = cbStatsTitles
+    f.cbStatsIcons = cbStatsIcons
     f.cbDragonPlayerFrame = cbDragonPlayerFrame
     f.cbDragonTargetFrame = cbDragonTargetFrame
     f.importBtn     = importBtn
@@ -1242,8 +1419,11 @@ local function BuildOptionsFrame()
         self.cbDurShowAll:Refresh()
         self.cbDurGrowUpward:Refresh()
         self.cbDurReverseOrder:Refresh()
+        self.cbDurTitle:Refresh()
         self.cbStatsHorizontal:Refresh()
         self.cbStatsBackground:Refresh()
+        self.cbStatsTitles:Refresh()
+        self.cbStatsIcons:Refresh()
         self.cbStatRusted:Refresh()
         self.cbStatBroken:Refresh()
         self.cbStatDeaths:Refresh()

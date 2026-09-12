@@ -46,12 +46,18 @@ end
 -- via ApplyDifficultyLabelStyle) while settings are locked, instead of showing
 -- a separate combat-lock note elsewhere on the panel. Sized up and outlined
 -- so it reads clearly in that larger title slot instead of looking muted.
+--
+-- Tinted from the vivid palette, not the earthy one the difficulty title uses.
+-- The earthy colours are chosen to sit back behind a large display face, which
+-- is the wrong job here -- at the Dust tier in particular the title colour is a
+-- near-black red, and a notice nobody can read is worse than no notice at all.
 local function ApplyCombatLockLabelStyle(slider, value)
     local label = slider and slider.GetName and _G[slider:GetName().."Text"]
     if not label then return end
 
     local v = math.max(1, math.min(5, math.floor((value or 1) + 0.5)))
-    local color = DIFF_COLORS[v] or DIFF_COLORS[1]
+    local palette = Rustcore.DIFFICULTY_COLORS_VIVID or DIFF_COLORS
+    local color = palette[v] or palette[1]
     label:SetWidth(340)
     label:SetText(COMBAT_NOTE_TEXT)
     label:SetFont(BODY_FONT_PATH, 24, "OUTLINE")
@@ -202,13 +208,16 @@ local DEPENDENT_TOGGLES = {
     { parentKey = "showStatsWindow",    field = "cbStatDeaths" },
     { parentKey = "showStatsWindow",    field = "cbStatBestItem" },
     { parentKey = "showStatsWindow",    field = "cbStatsColoredNumbers" },
+    { parentKey = "showStatsWindow",    field = "cbStatsTitles" },
+    { parentKey = "showStatsWindow",    field = "cbStatsIcons" },
     { parentKey = "showDurabilityHUD",  field = "cbDurShowAll" },
     { parentKey = "showDurabilityHUD",  field = "cbDurHorizontal" },
     { parentKey = "showDurabilityHUD",  field = "cbDurBackground" },
     { parentKey = "showDurabilityHUD",  field = "cbDurGrowUpward" },
     { parentKey = "showDurabilityHUD",  field = "cbDurReverseOrder" },
+    { parentKey = "showDurabilityHUD",  field = "cbDurTitle" },
     { parentKey = "showStatsWindow",    field = "cbStatsHorizontal" },
-    { parentKey = "showStatsWindow",   field = "cbStatsBackground" },
+    { parentKey = "showStatsWindow",    field = "cbStatsBackground" },
     { parentKey = "broadcastDeaths",    field = "cbGuildMessage" },
     { parentKey = "broadcastDeaths",    field = "cbRealmBroadcast" },
     { parentKey = "showDeathWarning",   field = "cbShowWarningSound" },
@@ -298,8 +307,11 @@ local function RefreshCombatLockState(frame)
         frame.cbDurShowAll,
         frame.cbDurGrowUpward,
         frame.cbDurReverseOrder,
+        frame.cbDurTitle,
         frame.cbStatsHorizontal,
         frame.cbStatsBackground,
+        frame.cbStatsTitles,
+        frame.cbStatsIcons,
         frame.cbStatRusted,
         frame.cbStatBroken,
         frame.cbStatDeaths,
@@ -697,20 +709,35 @@ local function BuildOptionsFrame()
         "Reverses the durability HUD stack order, placing the most damaged item at the bottom instead of the top. In Horizontal Display it moves the most damaged item to the far end of the row instead.",
         cbDurGrowUpward, -3, "durHUDReverseOrder", 0, 20, 14)
 
+    local cbDurTitle = MakeCheckbox(interfaceContent,
+        "Panel Title",
+        "Puts a \"Durability\" heading across the top of the durability HUD. One heading for the whole panel, not one per counter.",
+        cbDurReverseOrder, -3, "durHUDShowTitle", 0, 20, 14)
+
     local cbStats = MakeCheckbox(interfaceContent,
         "Show Stats Window",
         "Show or hide the Rustcore item loss stats window.",
-        cbDurReverseOrder, -7, "showStatsWindow", -34)
+        cbDurTitle, -7, "showStatsWindow", -34)
 
     local cbStatsHorizontal = MakeCheckbox(interfaceContent,
         "Horizontal Display",
-        "Arranges all stats window elements in a single row instead of two.",
+        "Lays the stats counters out side by side in a single row instead of stacking them into a column.",
         cbStats, -3, "statsHorizontalLayout", 234, 20, 14)
 
     local cbStatsBackground = MakeCheckbox(interfaceContent,
         "Panel Background",
         "Draws the rivet panel behind the stats window. Turning it off also drops the extra margin that was reserved for the panel border, letting the window pull its content in tighter.",
         cbStatsHorizontal, -3, "statsBackground", 0, 20, 14)
+
+    local cbStatsTitles = MakeCheckbox(interfaceContent,
+        "Counter Titles",
+        "Puts a heading above each stats counter naming what it counts. One per counter, since every row counts something different.",
+        cbStatsBackground, -3, "statsShowTitles", 0, 20, 14)
+
+    local cbStatsIcons = MakeCheckbox(interfaceContent,
+        "Counter Icons",
+        "Shows an icon beside each stats counter. Turning it off falls back to the plain counter graphic the window used before the icons, with the same numbers in it.",
+        cbStatsTitles, -3, "statsShowIcons", 0, 20, 14)
 
     local cbStatRusted = MakeCheckbox(interfaceContent,
         "Rusted Counter",
@@ -1340,8 +1367,11 @@ local function BuildOptionsFrame()
     f.cbDurShowAll  = cbDurShowAll
     f.cbDurGrowUpward = cbDurGrowUpward
     f.cbDurReverseOrder = cbDurReverseOrder
+    f.cbDurTitle = cbDurTitle
     f.cbStatsHorizontal = cbStatsHorizontal
     f.cbStatsBackground = cbStatsBackground
+    f.cbStatsTitles = cbStatsTitles
+    f.cbStatsIcons = cbStatsIcons
     f.cbDragonPlayerFrame = cbDragonPlayerFrame
     f.cbDragonTargetFrame = cbDragonTargetFrame
     f.importBtn     = importBtn
@@ -1389,8 +1419,11 @@ local function BuildOptionsFrame()
         self.cbDurShowAll:Refresh()
         self.cbDurGrowUpward:Refresh()
         self.cbDurReverseOrder:Refresh()
+        self.cbDurTitle:Refresh()
         self.cbStatsHorizontal:Refresh()
         self.cbStatsBackground:Refresh()
+        self.cbStatsTitles:Refresh()
+        self.cbStatsIcons:Refresh()
         self.cbStatRusted:Refresh()
         self.cbStatBroken:Refresh()
         self.cbStatDeaths:Refresh()

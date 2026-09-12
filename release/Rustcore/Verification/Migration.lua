@@ -336,7 +336,12 @@ function M.Run()
         record.difficulty.currentTier = V.GetCurrentTier()
     end
 
-    M.RepairSealVersionFalsePositive(record)
+    -- Called directly rather than through the seal-version wrapper: an earlier
+    -- build cleared `tamperReason` on records it could not fully repair, so
+    -- gating on that flag would skip exactly the characters still stuck.
+    -- LiftTerminalIntegrity carries its own guards, and they are the ones that
+    -- matter -- an integrity verdict with nothing actually observed behind it.
+    M.LiftTerminalIntegrity(record)
     M.ReleaseLegacyGapVerdict(record)
     M.MaybeGrandfatherExisting(record)
     M.RepairUnexplainedSelfFound(record)
@@ -368,52 +373,55 @@ function M.RepairSealVersionFalsePositive(record)
     -- none written afterwards. Once a record has a fingerprint its seal is
     -- trustworthy, and a failure from that point on is left standing.
     if chain.sealFields ~= nil then return false end
+    return M.LiftTerminalIntegrity(record)
+end
 
-    -- Only the statuses this bug could have caused are lifted, and only where
-    -- integrity was the stated reason. Anything Rustcore actually observed --
-    -- a violation, a repair, a tracking gap -- was recorded separately and is
-    -- left exactly as it stands.
-    -- What the track is restored *to* follows the evidence still on the record,
-    -- because the status it held before the false failure was not written down.
-    -- A difficulty track with a tier had been certified; one without had not yet
-    -- earned it. Restoring everything to VERIFIED would hand certification to
-    -- characters that were only part-way through qualifying, so those go back to
-    -- UNCERTAIN and the normal qualification path decides as it would have.
-    local restored = false
+-- Records the old behaviour left permanently dead.
+--
+-- Before integrity mismatches became a suspension, they set UNVERIFIED, which
+-- nothing can lift. Characters carrying that verdict cannot recover on their
+-- own however long they play, and in the cases that prompted the change the
+-- mismatch was Rustcore's own bookkeeping rather than anything the player did.
+--
+-- Converted to a suspension rather than restored outright, so recovery still
+-- has to be earned by the same clean stretch of play any other integrity hold
+-- requires. Guarded on there being nothing Rustcore actually observed: a
+-- violation, a repair or a tracking gap is recorded separately and keeps its
+-- verdict.
+function M.LiftTerminalIntegrity(record)
+    if not record then return false end
+
+    local function Observed(track)
+        if type(track) ~= "table" then return false end
+        if (track.violations or 0) > 0 then return true end
+        if (track.repairViolations or 0) > 0 then return true end
+        return false
+    end
+    if Observed(record.difficulty) or Observed(record.selfFound) then return false end
+
+    local timeState = record.time or {}
+    if timeState.gapBand and timeState.gapBand ~= "OK" then return false end
+
+    local tracked = timeState.trackedSinceAnchor or 0
+    local lifted = false
     for _, trackName in ipairs({ "difficulty", "selfFound" }) do
         local track = record[trackName]
         if type(track) == "table"
             and track.status == V.STATUS.UNVERIFIED
             and type(track.statusReason) == "string"
             and track.statusReason:sub(1, 10) == "integrity:" then
-
-            local wasCertified
-            if trackName == "difficulty" then
-                wasCertified = (tonumber(track.highestVerifiedTier) or 0) >= 1
-            else
-                wasCertified = track.claimed and not track.claimLapsed
-            end
-
-            track.evidenceStatus = wasCertified and V.STATUS.VERIFIED or V.STATUS.UNCERTAIN
-            track.evidenceReason = nil
-            track.status = track.evidenceStatus
-            track.statusReason = nil
-            track.statusAt = nil
-            restored = true
+            track.status = V.STATUS.SUSPENDED
+            track.integrityHold = tracked + (V.INTEGRITY_RESTORE_TRACKED or 1800)
+            lifted = true
         end
     end
 
-    record.tamperReason = nil
-    if restored and V.Integrity and V.Integrity.Append then
-        V.Integrity.Append("SEAL_REPAIR", { from = chain.sealVersion or 0 })
+    if lifted then
+        if V.Integrity and V.Integrity.Seal then V.Integrity.Seal(record) end
+        print("|cffff4444Rustcore:|r A checksum error from an earlier Rustcore version "
+            .. "no longer ends this run. Verification returns after a clean stretch of play.")
     end
-    if V.Integrity and V.Integrity.Seal then V.Integrity.Seal(record) end
-
-    if restored then
-        print("|cffff4444Rustcore:|r A verification checksum error caused by an "
-            .. "earlier Rustcore version has been corrected.")
-    end
-    return restored
+    return lifted
 end
 
 -- Hand tracking-gap verdicts written by older builds back to the component that

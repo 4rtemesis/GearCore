@@ -593,6 +593,49 @@ end
 -- Re-run both tracks. Cheap and idempotent -- every check refuses unless its
 -- track is still UNCERTAIN -- so any event that might have moved a character
 -- closer can just call this.
+-- How much clean, observed play lifts a suspension caused by an integrity
+-- mismatch. Long enough that editing the saved file buys nothing; short enough
+-- that a player Rustcore wronged is not stuck for the life of the character.
+V.INTEGRITY_RESTORE_TRACKED = 1800
+
+-- Lift an integrity hold once the record has been watched cleanly for long
+-- enough and now passes its own check again.
+--
+-- The record is re-sealed the moment the mismatch is found, so the check passes
+-- from then on -- what is actually being waited out is the tracked play, which
+-- is the part a tamperer cannot fake and an honest player gets for free.
+function V.CheckIntegrityRestore()
+    local record = V.GetRecord()
+    if not record then return false end
+
+    local tracked = (record.time and record.time.trackedSinceAnchor) or 0
+    local restoredAny = false
+
+    for _, trackName in ipairs({ "difficulty", "selfFound" }) do
+        local track = record[trackName]
+        if track and track.status == V.STATUS.SUSPENDED and track.integrityHold then
+            if tracked >= track.integrityHold then
+                -- Refuse while the record still fails, or a genuinely broken one
+                -- would be handed back its certification on a timer.
+                local ok = true
+                if V.Integrity and V.Integrity.Check then ok = V.Integrity.Check(record) end
+                if ok and V.Restore(trackName, "clean play since the record was rebuilt") then
+                    track.integrityHold = nil
+                    track.statusReason = nil
+                    restoredAny = true
+                end
+            end
+        end
+    end
+
+    if restoredAny then
+        record.tamperReason = nil
+        if V.Integrity and V.Integrity.Seal then V.Integrity.Seal() end
+        print("|cffff4444Rustcore:|r Verification restored after a clean stretch of play.")
+    end
+    return restoredAny
+end
+
 function V.CheckQualifications()
     if V.Difficulty and V.Difficulty.CheckQualification then
         V.Difficulty.CheckQualification()
@@ -605,6 +648,7 @@ function V.CheckQualifications()
     if V.SelfFound and V.SelfFound.CheckRestore then
         V.SelfFound.CheckRestore()
     end
+    V.CheckIntegrityRestore()
 end
 
 -- Record a typed warning and return the new count for that type, so callers
@@ -865,10 +909,44 @@ SlashCmdList["RCVERIFY"] = function()
         FormatDuration(allowed)))
 
     local chain = record.chain or {}
-    local ok, reason = true, nil
-    if V.Integrity and V.Integrity.Check then ok, reason = V.Integrity.Check(record) end
+    local ok, reason, stale = true, nil, false
+    if V.Integrity and V.Integrity.Check then ok, reason, stale = V.Integrity.Check(record) end
+    local verdict
+    if not ok then
+        verdict = "|cffff4444" .. tostring(reason) .. "|r"
+    elseif stale then
+        -- Distinct from "ok" on purpose: nothing was actually compared, and
+        -- saying "ok" would claim a check that did not happen.
+        verdict = "|cffffd700not checkable (sealed in an older shape)|r"
+    else
+        verdict = "|cff44ff44ok|r"
+    end
     print(string.format("  Chain: %d events, head %s, integrity %s",
         chain.events and #chain.events or 0,
-        tostring(chain.head),
-        ok and "|cff44ff44ok|r" or ("|cffff4444" .. tostring(reason) .. "|r")))
+        tostring(chain.head), verdict))
+
+    -- Seal detail. Printed because "the record failed its own checksum" is
+    -- otherwise impossible to tell apart from "the record was sealed by a build
+    -- that protected different fields", and those want opposite responses.
+    local live = V.Integrity and V.Integrity.SealFingerprint and V.Integrity.SealFingerprint()
+    print(string.format("  Seal: version %s (build %s), fields %s (build %s)%s",
+        tostring(chain.sealVersion), tostring(V.Integrity and V.Integrity.SEAL_VERSION),
+        tostring(chain.sealFields), tostring(live),
+        (chain.sealFields ~= nil and live ~= nil and chain.sealFields ~= live)
+            and "  |cffffd700-> shape changed, check skipped|r" or ""))
+
+    if record.tamperReason then
+        print("  Tamper flag: |cffff4444" .. tostring(record.tamperReason) .. "|r")
+    end
+    for _, name in ipairs({ "difficulty", "selfFound" }) do
+        local track = record[name] or {}
+        if track.integrityHold then
+            local tracked = timeState.trackedSinceAnchor or 0
+            print(string.format("  %s integrity hold: %s of %s tracked",
+                name, FormatDuration(tracked), FormatDuration(track.integrityHold)))
+        end
+        if track.statusReason then
+            print(string.format("  %s reason: %s", name, tostring(track.statusReason)))
+        end
+    end
 end
